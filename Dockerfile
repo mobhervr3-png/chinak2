@@ -1,6 +1,6 @@
 FROM node:20
 
-# Build trigger: 2026-02-26-v3
+# Build trigger: 2026-02-26-v4-FULL-REBUILD
 WORKDIR /app
 
 # Copy backend package files and prisma schema
