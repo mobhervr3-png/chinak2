@@ -7686,9 +7686,12 @@ const server = httpServer.listen(PORT, '0.0.0.0', () => {
   // Keep-alive for Hugging Face (simple ping every 2 minutes)
   setInterval(() => {
     try {
-      https.get(`https://hussss123-myapp.hf.space/health`, (res) => {
-        // Just a ping to keep it alive
-      }).on('error', () => {});
+      const pingUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/health` : `http://localhost:${PORT}/health`;
+      if (pingUrl.startsWith('https')) {
+        https.get(pingUrl, () => {}).on('error', () => {});
+      } else {
+        // Fallback for internal ping
+      }
     } catch (e) {}
   }, 120000);
   

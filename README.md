@@ -1,13 +1,14 @@
----
 title: My Shop Backend (Live)
 emoji: 🛒
 colorFrom: blue
 colorTo: indigo
 sdk: docker
 app_port: 7860
+pinned: false
 ---
 
-# React + TypeScript + Vite
+# My Shop (Hugging Face Live)
+This is the production backend for the My Shop app.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
