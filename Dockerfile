@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# Build trigger: 2026-02-26-v5-LIGHTWEIGHT
+# NEW BUILD TRIGGER: 2026-02-26-v6-EMERGENCY-RESET
 WORKDIR /app
 
 # Install openssl for Prisma
