@@ -7884,7 +7884,14 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
   }
 });
 
-// Catch-all route for SPA - MUST be after all API routes
+const PORT = process.env.PORT || 7860;
+
+// Health check endpoint for Hugging Face
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// Root route - MUST be before any other routes that might conflict
 app.get('/', (req, res) => {
   const indexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) {
@@ -7894,6 +7901,9 @@ app.get('/', (req, res) => {
   }
 });
 
+// API routes should go here...
+
+// Catch-all route for SPA - MUST be after all API routes
 app.get('/*any', (req, res) => {
   // Check if the request is for an API route - if so, don't serve index.html
   if (req.path.startsWith('/api/')) {
@@ -7917,7 +7927,17 @@ if (process.env.RUN_CRON_TASKS === 'true') {
 console.log('Attempting to start server on port:', process.env.PORT || 5001);
 
 const server = httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT} (accessible from network)`);
+  console.log(`[HuggingFace] Server is active on port ${PORT}`);
+  console.log(`[HuggingFace] Health check: http://0.0.0.0:${PORT}/health`);
+  
+  // Keep-alive for Hugging Face (simple ping every 2 minutes)
+  setInterval(() => {
+    try {
+      https.get(`https://hussss123-myapp.hf.space/health`, (res) => {
+        // Just a ping to keep it alive
+      }).on('error', () => {});
+    } catch (e) {}
+  }, 120000);
   
   // Trigger MeiliSearch indexing on startup
   setTimeout(() => {
