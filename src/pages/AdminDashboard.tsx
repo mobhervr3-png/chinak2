@@ -23,7 +23,6 @@ import {
   Save,
   Truck,
   Share2,
-  Sparkles,
   Globe
 } from 'lucide-react';
 import { useLocation, Routes, Route, useNavigate as _useNavigate } from 'react-router-dom';
@@ -50,8 +49,7 @@ import {
   updateOrderInternationalFee,
   updateProductPrice,
   fetchSettings,
-  updateSettings,
-  estimateDimensions
+  updateSettings
 } from '../services/api';
 import { localProductService } from '../services/localProductService';
 import { socket } from '../services/socket';
@@ -1095,22 +1093,6 @@ const AdminDashboard: React.FC = () => {
             className="px-6 py-3.5 bg-primary text-white rounded-2xl text-sm font-bold shadow-lg shadow-primary/25 hover:scale-105 transition-all"
           >
             بحث
-          </button>
-          <button 
-            onClick={async () => {
-              try {
-                const token = getAuthToken();
-                const res = await estimateDimensions(undefined, token);
-                showToast(res.message, 'success');
-              } catch (error) {
-                showToast('فشل تشغيل تقدير الذكاء الاصطناعي', 'error');
-              }
-            }}
-            title="تقدير أبعاد المنتجات بالذكاء الاصطناعي"
-            className="px-5 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-600 dark:text-slate-400 hover:bg-slate-50 transition-all flex items-center gap-2"
-          >
-            <Sparkles size={20} className="text-primary" />
-            <span className="hidden sm:inline text-xs">تقدير الأبعاد</span>
           </button>
           <button className="px-5 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-600 dark:text-slate-400 hover:bg-slate-50 transition-all">
             <Filter size={20} />

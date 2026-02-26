@@ -48,7 +48,6 @@ const SearchResults: React.FC = () => {
   const addSearchHistory = useUserPreferencesStore((state) => state.addSearchHistory);
   const clearHistory = useUserPreferencesStore((state) => state.clearHistory);
   
-  const [isTyping, setIsTyping] = useState(false);
   const scrollTargetsRef = useRef<HTMLElement[]>([]);
 
   const observer = useRef<IntersectionObserver | null>(null);

@@ -33,7 +33,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import axios from 'axios';
 import prisma from './prismaClient.js';
-import { processProductAI, processProductEmbedding, hybridSearch, estimateProductPhysicals, normalizeArabic } from './services/aiService.js';
+import { normalizeArabic } from './services/aiService.js';
 import { calculateOrderShipping, calculateProductShipping, getAdjustedPrice } from './services/shippingService.js';
 import { setupLinkCheckerCron, checkAllProductLinks } from './services/linkCheckerService.js';
 import { createClient } from '@supabase/supabase-js';
@@ -149,11 +149,6 @@ const applyDynamicPricingToProduct = (product, rates) => {
   }
 };
 
-const embeddingJobQueue = [];
-const embeddingJobSet = new Set();
-const embeddingJobAttempts = new Map();
-let embeddingJobRunning = false;
-
 const bulkImportJobQueue = [];
 const bulkImportJobs = new Map();
 let bulkImportJobRunning = false;
@@ -169,52 +164,6 @@ const getHttpStatusFromError = (err) => {
   const msg = String(err.message || '');
   const match = msg.match(/\b(4\d\d|5\d\d)\b/);
   return match ? Number(match[1]) : null;
-};
-
-const enqueueEmbeddingJob = (productId) => {
-  const id = safeParseId(productId);
-  if (!id) return;
-  if (!process.env.DEEPINFRA_API_KEY && !process.env.HUGGINGFACE_API_KEY) return;
-  if (embeddingJobSet.has(id)) return;
-  embeddingJobQueue.push(id);
-  embeddingJobSet.add(id);
-  void runEmbeddingJobs();
-};
-
-const runEmbeddingJobs = async () => {
-  if (embeddingJobRunning) return;
-  embeddingJobRunning = true;
-  try {
-    while (embeddingJobQueue.length > 0) {
-      const productId = embeddingJobQueue.shift();
-      embeddingJobSet.delete(productId);
-
-      try {
-        await processProductAI(productId);
-        embeddingJobAttempts.delete(productId);
-        await sleep(2500);
-      } catch (err) {
-        const prev = embeddingJobAttempts.get(productId) || 0;
-        const nextAttempt = prev + 1;
-        embeddingJobAttempts.set(productId, nextAttempt);
-
-        const status = getHttpStatusFromError(err);
-        const waitMs = status === 429 ? 60000 : 15000;
-
-        if (nextAttempt <= 10) {
-          await sleep(waitMs);
-          if (!embeddingJobSet.has(productId)) {
-            embeddingJobQueue.push(productId);
-            embeddingJobSet.add(productId);
-          }
-        } else {
-          embeddingJobAttempts.delete(productId);
-        }
-      }
-    }
-  } finally {
-    embeddingJobRunning = false;
-  }
 };
 
 /**
@@ -620,7 +569,6 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'c2hhbnNoYWw2Ni1teS1zaG9wLWJhY2tlbmQtc2VjcmV0LTIwMjY=';
 
 // --- Normalization Helpers ---
@@ -2194,21 +2142,7 @@ app.put('/api/admin/notifications/read-all', authenticateToken, isAdmin, async (
 
 // ADMIN: Trigger AI processing for a product
 app.post('/api/admin/products/:id/process-ai', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const productId = safeParseId(id);
-    
-    console.log(`[Admin] Manually triggering AI processing for product ${productId}`);
-    
-    // Run asynchronously to not block response
-    processProductAI(productId).catch(err => {
-      console.error(`[Admin] Background AI processing failed for ${productId}:`, err);
-    });
-
-    res.json({ success: true, message: 'AI processing started in background' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to trigger AI processing' });
-  }
+  res.json({ success: true, message: 'AI processing is disabled' });
 });
 
 // ADMIN: Bulk update products status
@@ -2923,25 +2857,6 @@ app.get('/api/products/search', async (req, res) => {
       airShippingMinFloor: storeSettings?.airShippingMinFloor
     };
 
-    if (process.env.DEEPINFRA_API_KEY || process.env.HUGGINGFACE_API_KEY) {
-      try {
-        console.log(`[AI Search] Hybrid search for: "${search}" (page ${page})`);
-        const products = await hybridSearch(search, limit, skip, maxPrice);
-        if (products && products.length > 0) {
-          return res.json({
-            products: Array.isArray(products) ? products.map(p => applyDynamicPricingToProduct(p, shippingRates)) : products,
-            total: products.length === limit ? page * limit + limit : (page - 1) * limit + products.length,
-            page,
-            totalPages: products.length === limit ? page + 1 : page,
-            engine: 'hybrid'
-          });
-        }
-        console.log('[AI Search] No results found, falling back to database search');
-      } catch (aiError) {
-        console.error('AI Search failed in products search route, falling back:', aiError);
-      }
-    }
-
     const where = { 
       isActive: true,
       status: 'PUBLISHED',
@@ -3034,29 +2949,6 @@ app.get('/api/products', async (req, res) => {
       seaShippingRate: storeSettings?.seaShippingRate,
       airShippingMinFloor: storeSettings?.airShippingMinFloor
     };
-
-    // Use AI Hybrid Search if searching and keys are available
-    if (search && (process.env.DEEPINFRA_API_KEY || process.env.HUGGINGFACE_API_KEY)) {
-      try {
-        console.log(`[AI Search] Hybrid search for: "${search}" (page ${page})`);
-        const products = await hybridSearch(search, limit, skip, maxPrice);
-        
-        // Since hybrid search is dynamic, we estimate total for pagination or just return results
-        // For better UX, we can return a large total if there are results
-        if (products && products.length > 0) {
-          return res.json({
-            products: Array.isArray(products) ? products.map(p => applyDynamicPricingToProduct(p, shippingRates)) : products,
-            total: products.length === limit ? page * limit + limit : (page - 1) * limit + products.length,
-            page,
-            totalPages: products.length === limit ? page + 1 : page,
-            engine: 'hybrid'
-          });
-        }
-        console.log('[AI Search] No results found, falling back to database search');
-      } catch (aiError) {
-        console.error('AI Search failed in products route, falling back:', aiError);
-      }
-    }
 
     const where = { 
       isActive: true,
@@ -3424,7 +3316,6 @@ async function runBulkProductsImport(products, { onProgress } = {}) {
 
       if (existingProduct) {
         results.skipped++;
-        enqueueEmbeddingJob(existingProduct.id);
         results.requeued++;
         if (Array.isArray(results.skippedDetails) && results.skippedDetails.length < 25) {
           const matchedBy = [];
@@ -3673,24 +3564,6 @@ async function runBulkProductsImport(products, { onProgress } = {}) {
         }
       }
 
-      if (!weight || !length || !width || !height) {
-        try {
-          console.log(`[AI] Estimating missing dimensions for: ${name}`);
-          const estimates = await estimateProductPhysicals({
-            name,
-            image: mainImage,
-            description: p.description
-          });
-          
-          if (!weight) weight = estimates.weight;
-          if (!length) length = estimates.length;
-          if (!width) width = estimates.width;
-          if (!height) height = estimates.height;
-        } catch (aiErr) {
-          console.error('[AI] Estimation failed:', aiErr);
-        }
-      }
-
       // Determine effective shipping method for consistency across variants
       // (Moved calculation below to capture all data)
 
@@ -3908,8 +3781,6 @@ async function runBulkProductsImport(products, { onProgress } = {}) {
           }
         }
       });
-
-      enqueueEmbeddingJob(product.id);
 
       results.imported++;
       maybeReportProgress();
@@ -4303,7 +4174,6 @@ app.post('/api/products', authenticateToken, isAdmin, hasPermission('manage_prod
       }
     });
 
-    enqueueEmbeddingJob(product.id);
 
     res.status(201).json(product);
   } catch (error) {
@@ -5283,20 +5153,7 @@ app.post('/api/admin/products/bulk-ai-metadata', authenticateToken, isAdmin, has
 });
 
 app.post('/api/admin/products/queue-missing-embeddings', authenticateToken, isAdmin, hasPermission('manage_products'), async (req, res) => {
-  try {
-    const rawLimit = req.body?.limit;
-    const limit = Math.min(1000, Math.max(1, Number(rawLimit ?? 200) || 200));
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT id FROM "Product" WHERE embedding IS NULL ORDER BY id DESC LIMIT ${limit}`
-    );
-    for (const row of rows || []) {
-      enqueueEmbeddingJob(row.id);
-    }
-    res.json({ success: true, queued: (rows || []).length, running: embeddingJobRunning, queueSize: embeddingJobQueue.length });
-  } catch (error) {
-    console.error('[Queue Missing Embeddings] Error:', error);
-    res.status(500).json({ error: 'Failed to queue embeddings' });
-  }
+  res.json({ success: true, message: 'Embedding generation is disabled' });
 });
 
 // ADMIN: Bulk Publish (Step 5)
@@ -5319,8 +5176,6 @@ app.post('/api/admin/products/bulk-publish', authenticateToken, isAdmin, hasPerm
         isActive: true
       }
     });
-
-    ids.forEach((id) => enqueueEmbeddingJob(id));
 
     await logActivity(
       req.user.id,
@@ -5821,8 +5676,6 @@ app.post('/api/admin/products/bulk-create', authenticateToken, isAdmin, hasPermi
     );
 
     res.json({ success: true, count: createdResults.length, products: createdResults });
-
-    createdResults.forEach((product) => enqueueEmbeddingJob(product.id));
   } catch (error) {
     console.error('Detailed Bulk Create Error:', error);
     res.status(500).json({ 
@@ -5962,60 +5815,6 @@ app.get('/api/search', async (req, res) => {
         hasMore: skip + limitNum < total,
         engine: 'db'
       });
-    }
-
-    // Use AI Hybrid Search if API keys are available
-    if (process.env.DEEPINFRA_API_KEY || process.env.HUGGINGFACE_API_KEY) {
-      try {
-        log('hybrid_start', {});
-        const hybridStart = Date.now();
-        const results = await hybridSearch(q, 500, 0);
-        log('hybrid_done', { total: results.length, hybridMs: Date.now() - hybridStart });
-        const paginatedResults = results.slice(skip, skip + limitNum);
-
-        const paginatedIds = paginatedResults.map(r => Number(r.id)).filter(id => !Number.isNaN(id));
-        const hybridFetchStart = Date.now();
-        const productsWithDetails = await prisma.product.findMany({
-          where: {
-            id: { in: paginatedIds },
-            status: 'PUBLISHED',
-            isActive: true
-          },
-          include: {
-            variants: { select: productVariantSelect },
-            images: {
-              take: 1,
-              orderBy: { order: 'asc' }
-            }
-          }
-        });
-        log('hybrid_products_done', { returned: productsWithDetails.length, dbMs: Date.now() - hybridFetchStart });
-
-        const productsById = new Map(productsWithDetails.map(p => [p.id, p]));
-        const scoresById = new Map(paginatedResults.map(r => [Number(r.id), {
-          semantic_score: r.semantic_score,
-          keyword_score: r.keyword_score,
-          final_rank: r.final_rank
-        }]));
-
-        const mergedResults = paginatedIds
-          .map(id => {
-            const product = productsById.get(id);
-            if (!product) return null;
-            const scores = scoresById.get(id);
-            return scores ? { ...product, ...scores } : product;
-          })
-          .filter(Boolean);
-
-        return res.json({ 
-          products: mergedResults.map(p => applyDynamicPricingToProduct(p, shippingRates)), 
-          total: results.length,
-          hasMore: skip + limitNum < results.length,
-          engine: 'hybrid'
-        });
-      } catch (aiError) {
-        console.error(`[SEARCH ${requestId}] hybrid_error`, aiError);
-      }
     }
 
     // Highly flexible Arabic and Iraqi Dialect normalization and variation generation
@@ -6622,8 +6421,6 @@ app.put('/api/products/:id', authenticateToken, isAdmin, hasPermission('manage_p
       return updated;
     });
 
-    enqueueEmbeddingJob(product.id);
-
     res.json(product);
   } catch (error) {
     console.error('[Update Product] Error:', error);
@@ -6671,51 +6468,7 @@ app.delete('/api/products/:id', authenticateToken, isAdmin, hasPermission('manag
 
 // ADMIN: Trigger AI dimension estimation for products without them
 app.post('/api/admin/products/estimate-dimensions', authenticateToken, isAdmin, hasPermission('manage_products'), async (req, res) => {
-  try {
-    const { productIds } = req.body;
-    
-    // If no specific IDs provided, find all products with missing physical data
-    let productsToProcess = [];
-    if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
-      productsToProcess = await prisma.product.findMany({
-        where: {
-          OR: [
-            { weight: null },
-            { length: null },
-            { width: null },
-            { height: null }
-          ]
-        },
-        select: { id: true }
-      });
-    } else {
-      productsToProcess = productIds.map(id => ({ id: safeParseId(id) }));
-    }
-
-    console.log(`[AI Dimensions] Processing ${productsToProcess.length} products...`);
-    
-    // Process in background to avoid timeout
-    (async () => {
-      for (const p of productsToProcess) {
-        try {
-          await processProductAI(p.id);
-          // Small delay to be safe with rate limits
-          await new Promise(r => setTimeout(r, 1000));
-        } catch (err) {
-          console.error(`[AI Dimensions] Failed for product ${p.id}:`, err.message);
-        }
-      }
-      console.log(`[AI Dimensions] Completed processing ${productsToProcess.length} products.`);
-    })();
-
-    res.json({ 
-      success: true, 
-      message: `Started AI estimation for ${productsToProcess.length} products in background.` 
-    });
-  } catch (error) {
-    console.error('[AI Dimensions] Error:', error);
-    res.status(500).json({ error: 'Failed to trigger AI estimation' });
-  }
+  res.json({ success: true, message: 'AI dimension estimation is disabled' });
 });
 
 // --- Addresses routes ---
@@ -7939,10 +7692,9 @@ const server = httpServer.listen(PORT, '0.0.0.0', () => {
     } catch (e) {}
   }, 120000);
   
-  // Trigger MeiliSearch indexing on startup
+  // MeiliSearch indexing removed
   setTimeout(() => {
-    console.log('[Meili Debug] Startup index check skipped (function not defined)');
-    // ensureMeiliIndexed().catch(err => console.error('[Meili Debug] Startup index check failed:', err));
+    console.log('[Search Debug] Search system ready');
   }, 5000);
 });
 

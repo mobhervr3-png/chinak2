@@ -1206,15 +1206,6 @@ export async function updateSettings(settingsData: any, token?: string | null) {
   return response;
 }
 
-// Admin: AI Estimation
-export async function estimateDimensions(productIds?: (number | string)[], token?: string | null) {
-  return request('/admin/products/estimate-dimensions', {
-    method: 'POST',
-    body: JSON.stringify({ productIds }),
-    token
-  });
-}
-
 // Admin: User Details
 export async function fetchUserDetails(id: string | number) {
   return request(`/admin/users/${id}`);

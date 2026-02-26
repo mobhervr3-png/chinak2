@@ -16,7 +16,6 @@ import OpenAI from 'openai'; // Use OpenAI SDK for DeepInfra
 import readline from 'readline';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
-import { processProductEmbedding } from '../services/aiService.js';
 
 // Load .env
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +45,50 @@ if (process.env.DATABASE_URL) {
 
 // const prisma = new PrismaClient();
 const prisma = new PrismaClient();
+
+// --- DeepInfra Embedding Service ---
+const deepinfra = new OpenAI({
+    baseURL: 'https://api.deepinfra.com/v1/openai',
+    apiKey: process.env.DEEPINFRA_API_KEY,
+});
+
+async function generateEmbedding(productId) {
+    if (!process.env.DEEPINFRA_API_KEY) {
+        console.log('Skipping embedding: DEEPINFRA_API_KEY not found');
+        return;
+    }
+
+    try {
+        const product = await prisma.product.findUnique({
+            where: { id: productId },
+            select: { name: true, description: true }
+        });
+
+        if (!product) return;
+
+        const textToEmbed = `${product.name} ${product.description || ''}`.trim().substring(0, 1000);
+        console.log(`Generating embedding for Product ${productId}...`);
+
+        const response = await deepinfra.embeddings.create({
+            model: process.env.DEEPINFRA_EMBEDDING_MODEL || 'google/embeddinggemma-300m',
+            input: textToEmbed,
+        });
+
+        const embedding = response.data[0].embedding;
+
+        // Update the product with the embedding vector
+        // Note: We use executeRaw because Prisma doesn't natively support pgvector well in standard methods
+        await prisma.$executeRawUnsafe(
+            'UPDATE "Product" SET embedding = $1::vector WHERE id = $2',
+            embedding,
+            productId
+        );
+
+        console.log(`✅ Embedding generated and saved for Product ${productId}`);
+    } catch (error) {
+        console.error(`❌ Embedding generation failed for Product ${productId}:`, error.message);
+    }
+}
 
 // Global flag for page errors (e.g. 424/403)
 let hasPageError = false;
@@ -825,13 +868,8 @@ async function saveProductToDb(productData) {
 
         console.log(`✅ Successfully inserted into DB! Product ID: ${newProduct.id}`);
 
-        // 3. Generate Embedding (DeepInfra)
-        try {
-            console.log('Triggering embedding generation (google/embeddinggemma-300m)...');
-            await processProductEmbedding(newProduct.id);
-        } catch (embedErr) {
-            console.error(`⚠️ Embedding generation failed for Product ${newProduct.id}:`, embedErr.message);
-        }
+        // Trigger embedding generation
+        await generateEmbedding(newProduct.id);
 
     } catch (e) {
         console.error('Save Error:', e.message);

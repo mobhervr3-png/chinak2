@@ -14,8 +14,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "@huggingface/inference": "^4.13.5",
     "@prisma/client": "^6.19.1",
     "@supabase/supabase-js": "^2.90.1",
     "axios": "^1.13.2",
@@ -30,7 +28,6 @@
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.12",
-    "openai": "^6.15.0",
     "prisma": "^6.19.1",
     "puppeteer-core": "^24.36.1",
     "puppeteer-extra": "^3.3.6",
