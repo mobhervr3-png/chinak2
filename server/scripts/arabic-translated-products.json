@@ -1,0 +1,99 @@
+{
+  "products": [
+    {
+      "product_name": "بلوزة نسائية برقبة عريضة وتطريز",
+      "category": "ملابس > ملابس نسائية > بلوزات وقمصان",
+      "main_images": [
+        "https://cbu01.alicdn.com/img/ibank/O1CN01aLVkHs1tjCOcy9XIG_!!2207910445937-0-cib.jpg",
+        "https://cbu01.alicdn.com/img/ibank/O1CN014EJF6m1tjCObOGm9u_!!2207910445937-0-cib.jpg",
+        "https://cbu01.alicdn.com/img/ibank/O1CN01dcgTQy1tjCOcy8C80_!!2207910445937-0-cib.jpg",
+        "https://cbu01.alicdn.com/img/ibank/O1CN01gY9YkF1tjCOcAJwJg_!!2207910445937-0-cib.jpg",
+        "https://cbu01.alicdn.com/img/ibank/O1CN01CeYepL1tjCOTvZMah_!!2207910445937-0-cib.jpg"
+      ],
+      "url": "https://detail.1688.com/offer/790844963935.html?offerId=790844963935&sortType=&pageId=&abBizDataType=cbuOffer&trace_log=normal&uuid=0763fe56b833429e9ef1bf2992c9e7d2&skuId=5396988876464&forcePC=1769598413750",
+      "product_details": {
+        "المادة": "دانتيل وتطريز",
+        "النمط": "أنثوي وجذاب",
+        "الموسم": "صيف"
+      },
+      "weight": "0.15",
+      "dimensions": "50*40*3",
+      "reviews": [
+        {
+          "buyer": "مشتري مجهول",
+          "comment": "منتج رائع وجودة ممتازة",
+          "date": "2024-02-15",
+          "spec": "لون أبيض - مقاس M"
+        },
+        {
+          "buyer": "سارة أحمد",
+          "comment": "التطريز جميل والقماش مريح",
+          "date": "2024-02-10",
+          "spec": "لون أسود - مقاس S"
+        }
+      ],
+      "domestic_shipping_fee": 120000,
+      "general_price": 4600,
+      "variants": {
+        "sizes": [
+          "S",
+          "M",
+          "L"
+        ],
+        "colors": [
+          "أبيض",
+          "أسود",
+          "أحمر"
+        ]
+      },
+      "generated_options": [
+        {
+          "color": "أبيض",
+          "sizes": [
+            "S",
+            "M",
+            "L"
+          ],
+          "price": 4600
+        },
+        {
+          "color": "أسود",
+          "sizes": [
+            "S",
+            "M",
+            "L"
+          ],
+          "price": 4600
+        },
+        {
+          "color": "أحمر",
+          "sizes": [
+            "S",
+            "M",
+            "L"
+          ],
+          "price": 4600
+        }
+      ],
+      "extracted_tags": [
+        "ملابس نسائية",
+        "بلوزات",
+        "تطريز",
+        "رقبة عريضة",
+        "ملابس صيفية"
+      ],
+      "synonyms": [
+        "بلوزة نسائية",
+        "قميص بتطريز",
+        "ملابس أنثوية",
+        "بلوزة برقبة عريضة",
+        "ملابس بتطريز الدانتيل"
+      ],
+      "category_suggestion": "ملابس/نسائية/بلوزات/تطريز",
+      "weight_kg": "7.5",
+      "original_price_yuan": 23,
+      "converted_price_iqd": 4600,
+      "free_shipping": false
+    }
+  ]
+}

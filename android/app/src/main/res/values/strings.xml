@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">صينك</string>
+    <string name="title_activity_main">صينك</string>
+    <string name="package_name">com.chinak.app</string>
+    <string name="custom_url_scheme">com.chinak.app</string>
+</resources>

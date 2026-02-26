@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  body {
+    min-height: 100dvh;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+    overflow-x: hidden;
+  }
+
+  /* Allow text selection in inputs and textareas */
+  input, textarea {
+    user-select: text;
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar,
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar,
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  /* Smooth transitions */
+  .transition-all-custom {
+    transition-property: all;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 300ms;
+  }
+
+  /* Checkbox custom style for Payment & Address page */
+  .peer:checked ~ .custom-radio-border {
+    border-color: #2b8cee;
+    background-color: #f0f7ff;
+  }
+  .dark .peer:checked ~ .custom-radio-border {
+    border-color: #2b8cee;
+    background-color: rgba(43, 140, 238, 0.1);
+  }
+
+  .peer:checked ~ .custom-radio-border .radio-indicator {
+    background-color: #2b8cee;
+    border-color: #2b8cee;
+  }
+
+  /* Hide number input spinners */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  /* Chat Bubble Tails */
+  .clip-bubble-right {
+    clip-path: polygon(0 0, 0% 100%, 100% 100%);
+  }
+  .clip-bubble-left {
+    clip-path: polygon(100% 0, 0 100%, 100% 100%);
+  }
+
+  /* Safe Area Utilities */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .mt-safe {
+    margin-top: env(safe-area-inset-top, 0px);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pb-safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
+  }
+}

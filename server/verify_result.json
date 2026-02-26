@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "job": {
+    "id": "7926b203-3de1-4e7b-b624-70484f039a3b",
+    "userId": 71,
+    "status": "completed",
+    "total": 1,
+    "processed": 1,
+    "createdAt": "2026-02-11T14:39:06.319Z",
+    "startedAt": "2026-02-11T14:39:06.319Z",
+    "finishedAt": "2026-02-11T14:39:25.313Z",
+    "results": {
+      "total": 1,
+      "imported": 1,
+      "skipped": 0,
+      "requeued": 0,
+      "failed": 0,
+      "errors": [],
+      "skippedDetails": []
+    },
+    "error": null
+  }
+}

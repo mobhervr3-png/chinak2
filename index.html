@@ -1,0 +1,153 @@
+<!doctype html>
+<html class="light" dir="rtl" lang="ar">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Chinak - صينك</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;700;900&family=Inter:wght@400;500;700&display=block" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@latest/css/materialdesignicons.min.css" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root">
+      <style>
+        .initial-loader {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background-color: #ffffff;
+          z-index: 9999;
+          font-family: 'Cairo', sans-serif;
+        }
+        @media (prefers-color-scheme: dark) {
+          .initial-loader {
+            background-color: #0f172a;
+          }
+        }
+        .loader-logo {
+          width: 80px;
+          height: 80px;
+          margin-bottom: 24px;
+          background-color: rgba(37, 99, 235, 0.1);
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+        }
+        .loader-spinner {
+          position: absolute;
+          inset: -4px;
+          border: 4px solid rgba(37, 99, 235, 0.1);
+          border-top-color: #2563eb;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+        .loader-text {
+          color: #2563eb;
+          font-weight: 700;
+          font-size: 1.25rem;
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        @supports not (color: oklch(0% 0 0)) {
+          :root {
+            --color-slate-50: #f8fafc;
+            --color-slate-100: #f1f5f9;
+            --color-slate-200: #e2e8f0;
+            --color-slate-300: #cbd5e1;
+            --color-slate-400: #94a3b8;
+            --color-slate-500: #64748b;
+            --color-slate-600: #475569;
+            --color-slate-700: #334155;
+            --color-slate-800: #1e293b;
+            --color-slate-900: #0f172a;
+            --color-slate-950: #020617;
+
+            --color-gray-50: #f9fafb;
+            --color-gray-100: #f3f4f6;
+            --color-gray-200: #e5e7eb;
+            --color-gray-300: #d1d5db;
+            --color-gray-400: #9ca3af;
+            --color-gray-500: #6b7280;
+            --color-gray-600: #4b5563;
+            --color-gray-700: #374151;
+            --color-gray-800: #1f2937;
+            --color-gray-900: #111827;
+            --color-gray-950: #030712;
+
+            --color-rose-50: #fff1f2;
+            --color-rose-100: #ffe4e6;
+            --color-rose-200: #fecdd3;
+            --color-rose-300: #fda4af;
+            --color-rose-400: #fb7185;
+            --color-rose-500: #f43f5e;
+            --color-rose-600: #e11d48;
+            --color-rose-700: #be123c;
+            --color-rose-800: #9f1239;
+            --color-rose-900: #881337;
+            --color-rose-950: #4c0519;
+
+            --color-blue-50: #eff6ff;
+            --color-blue-100: #dbeafe;
+            --color-blue-200: #bfdbfe;
+            --color-blue-300: #93c5fd;
+            --color-blue-400: #60a5fa;
+            --color-blue-500: #3b82f6;
+            --color-blue-600: #2563eb;
+            --color-blue-700: #1d4ed8;
+            --color-blue-800: #1e40af;
+            --color-blue-900: #1e3a8a;
+            --color-blue-950: #172554;
+
+            --color-green-50: #f0fdf4;
+            --color-green-100: #dcfce7;
+            --color-green-200: #bbf7d0;
+            --color-green-300: #86efac;
+            --color-green-400: #4ade80;
+            --color-green-500: #22c55e;
+            --color-green-600: #16a34a;
+            --color-green-700: #15803d;
+            --color-green-800: #166534;
+            --color-green-900: #14532d;
+            --color-green-950: #052e16;
+
+            --color-amber-50: #fffbeb;
+            --color-amber-100: #fef3c7;
+            --color-amber-200: #fde68a;
+            --color-amber-300: #fcd34d;
+            --color-amber-400: #fbbf24;
+            --color-amber-500: #f59e0b;
+            --color-amber-600: #d97706;
+            --color-amber-700: #b45309;
+            --color-amber-800: #92400e;
+            --color-amber-900: #78350f;
+            --color-amber-950: #451a03;
+          }
+        }
+      </style>
+      <div class="initial-loader">
+        <div class="loader-logo">
+          <div class="loader-spinner"></div>
+          <img src="logo.png" alt="Chinak" style="width: 48px; height: 48px; object-fit: contain;" onerror="this.style.display='none'; this.parentElement.innerHTML += '<span style=\'color: #2563eb; font-weight: bold; font-size: 2rem;\'>C</span>'">
+        </div>
+        <div class="loader-text">Chinak - صينك</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

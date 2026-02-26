@@ -1,0 +1,56 @@
+=== 1688 辣妹T恤 Advanced Image Extraction ===
+Extracted from: https://detail.1688.com/offer/951410798382.html?offerId=951410798382&sortType=&pageId=&abBizDataType=cbuOffer&trace_log=normal&uuid=07b8c17e56ce44729ee121592c608374&skuId=5869791617807&forcePC=1769593077326
+Total unique images: 12
+
+IMAGES:
+1. https://img.alicdn.com/imgextra/i2/O1CN01iHx1w01kMSG8GAKGe_!!6000000004669-2-tps-752-752.png
+2. [object Object]
+3. [object Object]
+4. [object Object]
+5. [object Object]
+6. [object Object]
+7. [object Object]
+8. [object Object]
+9. [object Object]
+10. [object Object]
+11. [object Object]
+12. [object Object]
+
+=== HTML ANALYSIS ===
+First 2000 characters:
+<!DOCTYPE html>
+<!--[if lt IE 7]><html class="lt-ie9 lt-ie8 lt-ie7"><![endif]-->
+<!--[if IE 7]><html class="lt-ie9 lt-ie8"><![endif]-->
+<!--[if IE 8]><html class="lt-ie9"><![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="zh-CN">
+<!--<![endif]-->
+<head>
+<base target="_blank">
+<title>辣妹一字领修身短袖T恤女2025夏季新款正肩打底衫女装外贸上衣潮 - 阿里巴巴</title>
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
+<meta name="renderer" content="webkit">
+<meta name="aplus-waiting" content="MAN">
+<meta name="data-spm" content="a261y">
+<meta name="applicable-device" content="pc">
+<meta name="od-version" content="2024">
+<meta name="mobile-agent" content="format=html5;url=https://m.1688.com/offer/951410798382.html">
+<meta name="mobile-agent" content="format=xhtml;url=https://m.1688.com/offer/951410798382.html">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="cache-control" content="no-cache">
+<meta http-equiv="cache-control" content="no-transform">
+<meta http-equiv="cache-control" content="no-siteapp">
+<meta http-equiv="expires" content="0">
+<link rel="dns-prefetch" href="https://o.alicdn.com/" />
+<link rel="dns-prefetch" href="https://g.alicdn.com/" />
+<link rel="dns-prefetch" href="https://img.alicdn.com/" />
+<link rel="preconnect" href="https://h5api.m.1688.com" />
+<style type="text/css">
+html{touch-action:manipulation;}*{margin:0;padding:0;}*,:after,:before{box-sizing:border-box;text-size-adjust:100%;}body,html{display:block;width:100%;margin:0;padding:0;}[hidden]{display:none;}
+</style>
+<style type="text/css">
+.sk-body{display:flex;flex-direction:row;width:100%;min-width:1370px;max-width:1490px;justify-content:space-between;margin:16px auto;padding:0 25px;}.sk-main{width:740px;height:740px}.sk-order{height:50vh;box-shadow:0px 0 6px rgba(0, 0, 0, .1);width:calc(100% - 770px);border-radius: 16px;}
+</style>
+ <script src="https://i.alicdn

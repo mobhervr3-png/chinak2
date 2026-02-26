@@ -1,0 +1,346 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int            @id @default(autoincrement())
+  email                String?        @unique
+  name                 String?
+  password             String?
+  avatar               String?
+  role                 String         @default("USER")
+  permissions          String         @default("[]")
+  isVerified           Boolean        @default(false)
+  otpCode              String?
+  otpExpires           DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  supabaseId           String?        @unique
+  phone                String?        @unique
+  lastWhatsappOtpDate  DateTime?
+  resetPasswordExpires DateTime?
+  resetPasswordOTP     String?
+  whatsappOtpCount     Int            @default(0)
+  addresses            Address[]
+  cart                 CartItem[]
+  couponUsages         CouponUsage[]
+  messages             Message[]
+  notifications        Notification[]
+  orders               Order[]
+  reviews              Review[]
+  wishlist             WishlistItem[]
+  interactions         UserInteraction[]
+  searchHistory        SearchHistory[]
+
+  @@index([name])
+}
+
+model UserInteraction {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  sessionId String?  // For guest users
+  productId Int
+  type      String   // VIEW, CART, PURCHASE, SHARE
+  weight    Float    @default(1.0)
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model SearchHistory {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  sessionId String?
+  query     String
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  userId    Int
+  sender    String
+  text      String
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Product {
+  id                Int                    @id @default(autoincrement())
+  name              String
+  price             Float
+  basePriceIQD      Float?
+  image             String
+  purchaseUrl       String?
+  status            String                 @default("PUBLISHED")
+  isFeatured        Boolean                @default(false)
+  isActive          Boolean                @default(true)
+  specs             String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  aiMetadata        Json?
+  scrapedReviews    Json?                  // New field for scraped reviews
+  generated_options Json?                  // New field for generated options
+  embedding         Unsupported("vector")?
+  domesticShippingFee Float?
+  isAirRestricted   Boolean                @default(false)
+  deliveryTime      String?
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  images            ProductImage[]
+  options           ProductOption[]
+  variants          ProductVariant[]
+  reviews           Review[]
+  wishlistItems     WishlistItem[]
+  interactions      UserInteraction[]
+
+  @@index([status])
+  @@index([isActive])
+  @@index([name])
+  @@index([updatedAt])
+}
+
+model ProductImage {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  url       String
+  order     Int      @default(0)
+  type      String   @default("GALLERY")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductOption {
+  id             Int     @id @default(autoincrement())
+  productId      Int
+  name           String
+  values         String
+  originalValues String?
+  product        Product @relation(fields: [productId], references: [id])
+}
+
+model ProductVariant {
+  id          Int         @id @default(autoincrement())
+  productId   Int
+  combination String
+  price       Float
+  basePriceIQD Float?
+  weight      Float?
+  height      Float?
+  length      Float?
+  width       Float?
+  image       String?
+  isPriceCombined Boolean   @default(false)
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+  product     Product     @relation(fields: [productId], references: [id])
+}
+
+model Address {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  type       String
+  name       String
+  phone      String
+  street     String
+  city       String
+  buildingNo String?
+  floorNo    String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+  orders     Order[]
+}
+
+model CartItem {
+  id              Int             @id @default(autoincrement())
+  userId          Int
+  productId       Int
+  variantId       Int?
+  quantity        Int             @default(1)
+  price           Float?          // Inclusive price (base + shipping)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  selectedOptions String?
+  shippingMethod  String          @default("air") // 'air' or 'sea'
+  product         Product         @relation(fields: [productId], references: [id])
+  user            User            @relation(fields: [userId], references: [id])
+  variant         ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@unique([userId, productId, variantId, selectedOptions, shippingMethod])
+}
+
+model Banner {
+  id        Int      @id @default(autoincrement())
+  title     String
+  subtitle  String?
+  image     String
+  link      String?
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StoreSettings {
+  id                  Int      @id @default(autoincrement())
+  storeName           String   @default("My Store")
+  contactEmail        String?
+  contactPhone        String?
+  currency            String   @default("د.ع")
+  socialLinks         String   @default("{}")
+  footerText          String?
+  updatedAt           DateTime @updatedAt
+  airShippingRate      Float    @default(15400)
+  seaShippingRate      Float    @default(182000)
+  airShippingMinFloor  Float    @default(0)
+  airShippingThreshold Float    @default(30000)
+  seaShippingThreshold Float    @default(80000)
+  chinaDomesticShipping Float    @default(1500)
+}
+
+model AdminNotification {
+  id        Int      @id @default(autoincrement())
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  type        String
+  icon        String
+  title       String
+  description String
+  isRead      Boolean  @default(false)
+  color       String?
+  link        String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model ActivityLog {
+  id         Int      @id @default(autoincrement())
+  adminId    Int?
+  adminName  String?
+  action     String
+  details    String
+  targetType String
+  targetId   Int?
+  createdAt  DateTime @default(now())
+}
+
+model Order {
+  id                       Int         @id @default(autoincrement())
+  userId                   Int
+  addressId                Int
+  total                    Float
+  discountAmount           Float       @default(0)
+  status                   String      @default("PENDING")
+  internalNote             String?
+  shippingMethod           String      @default("air")
+  paymentMethod            String      @default("zain_cash")
+  internationalShippingFee Float       @default(0)
+  couponId                 Int?
+  createdAt                DateTime    @default(now())
+  messages                 Message[]
+  address                  Address     @relation(fields: [addressId], references: [id])
+  coupon                   Coupon?     @relation(fields: [couponId], references: [id])
+  user                     User        @relation(fields: [userId], references: [id])
+  items                    OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Coupon {
+  id             Int           @id @default(autoincrement())
+  code           String        @unique
+  discountType   String
+  discountValue  Float
+  minOrderAmount Float         @default(0)
+  maxDiscount    Float?
+  startDate      DateTime      @default(now())
+  endDate        DateTime
+  isActive       Boolean       @default(true)
+  usageCount     Int           @default(0)
+  maxUsage       Int?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  isPublic       Boolean       @default(true)
+  usageLimit     Int?
+  usedBy         CouponUsage[]
+  orders         Order[]
+}
+
+model CouponUsage {
+  id       Int      @id @default(autoincrement())
+  couponId Int
+  userId   Int
+  usedAt   DateTime @default(now())
+  coupon   Coupon   @relation(fields: [couponId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([couponId, userId])
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  rating    Int
+  comment   String?
+  productId Int
+  userId    Int
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model OrderItem {
+  id              Int             @id @default(autoincrement())
+  orderId         Int
+  productId       Int
+  variantId       Int?
+  quantity        Int
+  price           Float
+  selectedOptions String?
+  order           Order           @relation(fields: [orderId], references: [id])
+  product         Product         @relation(fields: [productId], references: [id])
+  variant         ProductVariant? @relation(fields: [variantId], references: [id])
+  shippingMethod  String          @default("air") // 'air' or 'sea'
+}
+
+model WishlistItem {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, productId])
+}
