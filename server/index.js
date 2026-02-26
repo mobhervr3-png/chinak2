@@ -451,51 +451,21 @@ const productVariantSelect = {
 
 // Server start - Build Trigger: 2026-01-26 22:00
 const app = express();
+
+// IMMEDIATELY define health check for Hugging Face to prevent 503/timeouts
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/api/health', (req, res) => res.status(200).json({ status: 'ok' }));
+
 console.log('-------------------------------------------');
 console.log('--- UPDATED VARIANT LOGIC LOADED (v4 - FINAL FIX) ---');
 console.log('--- STRICTLY NO CURRENCY CONVERSION ---');
 console.log('-------------------------------------------');
 const httpServer = createServer(app);
 
-// Health check endpoint for Render/Deployment
-app.get('/api/health', async (req, res) => {
-  let dbStatus = 'unknown';
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    dbStatus = 'connected';
-  } catch (e) {
-    dbStatus = 'error: ' + e.message;
-  }
-
-  res.json({ 
-    status: 'ok', 
-    database: dbStatus,
-    timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'development',
-    port: process.env.PORT || 5001,
-    has_db_url: !!process.env.DATABASE_URL,
-    has_supabase_url: !!process.env.SUPABASE_URL
-  });
-});
-
-app.get('/api/diagnostics', (req, res) => {
-  res.json({
-    marker: 'engine-v2',
-    cwd: process.cwd(),
-    dirname: __dirname,
-    port: process.env.PORT || 5001,
-    env: process.env.NODE_ENV || 'development'
-  });
-});
-
-// Test Database Connection
+// Test Database Connection (moved to background)
 prisma.$connect()
   .then(() => {
     console.log('Successfully connected to the database');
-    return prisma.product.count();
-  })
-  .then(count => {
-    console.log(`Database check: Found ${count} products`);
   })
   .catch(err => {
     console.error('DATABASE CONNECTION ERROR:', err);
@@ -7638,11 +7608,6 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 7860;
-
-// Health check endpoint for Hugging Face
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
 
 // Root route - MUST be before any other routes that might conflict
 app.get('/', (req, res) => {

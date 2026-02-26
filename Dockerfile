@@ -1,7 +1,10 @@
-FROM node:20
+FROM node:20-slim
 
-# Build trigger: 2026-02-26-v4-FULL-REBUILD
+# Build trigger: 2026-02-26-v5-LIGHTWEIGHT
 WORKDIR /app
+
+# Install openssl for Prisma
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 # Copy backend package files and prisma schema
 COPY server/package*.json ./
