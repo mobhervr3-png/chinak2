@@ -39,7 +39,8 @@ const getExecutablePath = async () => {
         '/usr/bin/google-chrome-stable',
         '/usr/bin/google-chrome',
         '/usr/bin/chromium',
-        '/usr/bin/chromium-browser'
+        '/usr/bin/chromium-browser',
+        '/opt/google/chrome/google-chrome' // Common alternative location
     ];
 
     console.log('[Scraper] Checking Linux paths:', linuxPaths);
@@ -49,6 +50,16 @@ const getExecutablePath = async () => {
             console.log(`[Scraper] Found Linux Chrome at: ${p}`);
             return p;
         }
+    }
+
+    // List contents of /usr/bin to help debugging if nothing is found
+    try {
+        if (process.platform === 'linux') {
+            const binFiles = fs.readdirSync('/usr/bin').filter(f => f.includes('chrome') || f.includes('chromium'));
+            console.log('[Scraper] Chrome-related files in /usr/bin:', binFiles);
+        }
+    } catch (e) {
+        console.warn('[Scraper] Failed to list /usr/bin:', e.message);
     }
 
     // Check common Windows paths for Chrome
