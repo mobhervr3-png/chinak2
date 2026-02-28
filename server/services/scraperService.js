@@ -27,8 +27,45 @@ const getExecutablePath = async () => {
 
     // 1. Docker/Linux: Always use the system-installed Chrome from the base image
     if (process.platform === 'linux') {
-        // The official Puppeteer Docker image guarantees Chrome is here:
-        return '/usr/bin/google-chrome-stable';
+        // Try to read the path found during Docker build
+        try {
+            if (fs.existsSync('/tmp/chrome_path.txt')) {
+                const pathFromBuild = fs.readFileSync('/tmp/chrome_path.txt', 'utf8').trim();
+                if (pathFromBuild && fs.existsSync(pathFromBuild)) {
+                     console.log(`[Scraper] Found Chrome via build log: ${pathFromBuild}`);
+                     return pathFromBuild;
+                }
+            }
+        } catch (e) {
+            console.warn('[Scraper] Failed to read /tmp/chrome_path.txt:', e.message);
+        }
+
+        // Fallback: Check known paths again (since hardcoding failed)
+        const possiblePaths = [
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/opt/google/chrome/google-chrome'
+        ];
+        
+        for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+                console.log(`[Scraper] Found Chrome at known path: ${p}`);
+                return p;
+            }
+        }
+
+        // Last ditch effort: which
+        try {
+             const path = execSync('which google-chrome-stable || which google-chrome || which chromium || which chromium-browser').toString().trim();
+             if (path) {
+                 console.log(`[Scraper] Found Chrome via 'which': ${path}`);
+                 return path;
+             }
+        } catch (e) {
+             console.warn('[Scraper] Failed to find Chrome via which:', e.message);
+        }
     }
 
     // 2. Windows/Local Development fallback
