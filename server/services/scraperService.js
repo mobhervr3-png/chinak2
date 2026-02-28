@@ -61,45 +61,6 @@ const getExecutablePath = async () => {
         console.warn('[Scraper] Could not find bundled Chrome:', e.message);
     }
     
-    // 3. Check if running in Docker (Render) - Environment Variable Fallback
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-            console.log(`[Scraper] Using Docker Chrome at: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
-            return process.env.PUPPETEER_EXECUTABLE_PATH;
-        } else {
-            console.warn(`[Scraper] PUPPETEER_EXECUTABLE_PATH is set but file does not exist: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
-        }
-    }
-
-    // 2. Check standard Linux paths (Docker/Render)
-    const linuxPaths = [
-        process.env.PUPPETEER_EXECUTABLE_PATH,
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/opt/google/chrome/google-chrome' // Common alternative location
-    ];
-
-    console.log('[Scraper] Checking Linux paths:', linuxPaths);
-
-    for (const p of linuxPaths) {
-        if (p && fs.existsSync(p)) {
-            console.log(`[Scraper] Found Linux Chrome at: ${p}`);
-            return p;
-        }
-    }
-
-    // List contents of /usr/bin to help debugging if nothing is found
-    try {
-        if (process.platform === 'linux') {
-            const binFiles = fs.readdirSync('/usr/bin').filter(f => f.includes('chrome') || f.includes('chromium'));
-            console.log('[Scraper] Chrome-related files in /usr/bin:', binFiles);
-        }
-    } catch (e) {
-        console.warn('[Scraper] Failed to list /usr/bin:', e.message);
-    }
-
     // Check common Windows paths for Chrome
     const paths = [
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -111,17 +72,8 @@ const getExecutablePath = async () => {
             return p;
         }
     }
-    // Try Puppeteer's bundled Chrome
-    try {
-        const puppeteer = await import('puppeteer');
-        if (puppeteer.executablePath) {
-             return puppeteer.executablePath();
-        }
-        return null;
-    } catch (e) {
-        console.warn('[Scraper] Could not find bundled Chrome:', e.message);
-        return null;
-    }
+    
+    return null;
 };
 
 export async function testProxyConnection() {
