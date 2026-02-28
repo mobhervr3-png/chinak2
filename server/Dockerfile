@@ -26,6 +26,12 @@ RUN npx prisma generate
 # Copy the rest of the application
 COPY . .
 
+# Change ownership of the app directory to the non-root user 'pptruser'
+RUN chown -R pptruser:pptruser /app
+
+# Switch to the non-root user provided by the base image
+USER pptruser
+
 # Expose the port
 EXPOSE 10000
 
