@@ -21,10 +21,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const getExecutablePath = async () => {
+    console.log(`[Scraper] PUPPETEER_EXECUTABLE_PATH env var: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+    
     // 1. Check if running in Docker (Render)
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        console.log(`[Scraper] Using Docker Chrome at: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
-        return process.env.PUPPETEER_EXECUTABLE_PATH;
+        if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+            console.log(`[Scraper] Using Docker Chrome at: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+            return process.env.PUPPETEER_EXECUTABLE_PATH;
+        } else {
+            console.warn(`[Scraper] PUPPETEER_EXECUTABLE_PATH is set but file does not exist: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+        }
     }
 
     // Check common Windows paths for Chrome
