@@ -23,6 +23,18 @@ const __dirname = path.dirname(__filename);
 import { execSync } from 'child_process';
 
 const getExecutablePath = async () => {
+    // 1. Try Puppeteer's bundled Chrome (Highest Priority for Docker)
+    try {
+        const puppeteer = await import('puppeteer');
+        if (puppeteer.executablePath) {
+             const bundledPath = puppeteer.executablePath();
+             console.log(`[Scraper] Found bundled Chrome at: ${bundledPath}`);
+             return bundledPath;
+        }
+    } catch (e) {
+        console.warn('[Scraper] Could not find bundled Chrome:', e.message);
+    }
+
     console.log(`[Scraper] PUPPETEER_EXECUTABLE_PATH env var: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
     
     // 0. Use `which` command on Linux to find the binary automatically

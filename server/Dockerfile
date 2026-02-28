@@ -11,18 +11,13 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-# Note: We use --no-cache to keep the image small, and skip puppeteer's chrome download since the base image has it
-# The official image installs Google Chrome Stable at /usr/bin/google-chrome-stable
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+# Note: We use --no-cache to keep the image small
+# We do NOT set PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true so Puppeteer installs its own Chrome for Testing
+# This ensures version compatibility
+ENV PUPPETEER_EXECUTABLE_PATH=""
 
 # Install project dependencies
 RUN npm ci
-
-# DEBUG: Find where Chrome actually is in this image
-RUN find / -name "chrome" 2>/dev/null || echo "Chrome binary not found via find"
-RUN which google-chrome-stable || echo "google-chrome-stable not in PATH"
-RUN which google-chrome || echo "google-chrome not in PATH"
 
 # Copy Prisma schema and generate client
 COPY prisma ./prisma
