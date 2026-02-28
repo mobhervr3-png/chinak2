@@ -8,14 +8,14 @@ USER root
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package*.json .puppeteerrc.cjs ./
 
 # Install dependencies
 # Note: We use --no-cache to keep the image small
 # We do NOT set PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true so Puppeteer installs its own Chrome for Testing
 # This ensures version compatibility
 ENV PUPPETEER_EXECUTABLE_PATH="" \
-    PUPPETEER_CACHE_DIR=/home/pptruser/.cache/puppeteer
+    PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 # Install project dependencies
 RUN npm ci
@@ -27,9 +27,9 @@ RUN npx prisma generate
 # Copy the rest of the application
 COPY . .
 
-# Change ownership of the app directory AND the puppeteer cache to the non-root user 'pptruser'
-RUN mkdir -p /home/pptruser/.cache/puppeteer && \
-    chown -R pptruser:pptruser /app /home/pptruser/.cache/puppeteer
+# Change ownership of the app directory (including the .cache created by npm install)
+RUN mkdir -p /app/.cache/puppeteer && \
+    chown -R pptruser:pptruser /app
 
 # Switch to the non-root user provided by the base image
 USER pptruser
