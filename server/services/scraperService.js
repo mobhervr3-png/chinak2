@@ -46,8 +46,11 @@ const getExecutablePath = async () => {
     }
     // Try Puppeteer's bundled Chrome
     try {
-        const { executablePath } = await import('puppeteer');
-        return executablePath();
+        const puppeteer = await import('puppeteer');
+        if (puppeteer.executablePath) {
+             return puppeteer.executablePath();
+        }
+        return null;
     } catch (e) {
         console.warn('[Scraper] Could not find bundled Chrome:', e.message);
         return null;
