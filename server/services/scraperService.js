@@ -35,17 +35,30 @@ const getExecutablePath = async () => {
 
     // 2. Check standard Linux paths (Docker/Render)
     const linuxPaths = [
+        process.env.PUPPETEER_EXECUTABLE_PATH,
         '/usr/bin/google-chrome-stable',
         '/usr/bin/google-chrome',
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser'
     ];
 
+    console.log('[Scraper] Checking Linux paths:', linuxPaths);
+
     for (const p of linuxPaths) {
-        if (fs.existsSync(p)) {
+        if (p && fs.existsSync(p)) {
             console.log(`[Scraper] Found Linux Chrome at: ${p}`);
             return p;
         }
+    }
+
+    // List contents of /usr/bin to help debugging if nothing is found
+    try {
+        if (process.platform === 'linux') {
+            const binFiles = fs.readdirSync('/usr/bin').filter(f => f.includes('chrome') || f.includes('chromium'));
+            console.log('[Scraper] Chrome-related files in /usr/bin:', binFiles);
+        }
+    } catch (e) {
+        console.warn('[Scraper] Failed to list /usr/bin:', e.message);
     }
 
     // Check common Windows paths for Chrome
