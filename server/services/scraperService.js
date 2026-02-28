@@ -25,43 +25,13 @@ import { execSync } from 'child_process';
 const getExecutablePath = async () => {
     console.log(`[Scraper] PUPPETEER_EXECUTABLE_PATH env var: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
 
-    // 1. Prioritize System-Installed Chrome (since we are in Docker)
+    // 1. Docker/Linux: Always use the system-installed Chrome from the base image
     if (process.platform === 'linux') {
-        try {
-            // First check the official path
-            if (fs.existsSync('/usr/bin/google-chrome-stable')) {
-                 console.log('[Scraper] Found system Chrome at: /usr/bin/google-chrome-stable');
-                 return '/usr/bin/google-chrome-stable';
-            }
-
-            const path = execSync('which google-chrome-stable || which google-chrome || which chromium || which chromium-browser').toString().trim();
-            if (path) {
-                console.log(`[Scraper] Found Chrome via 'which': ${path}`);
-                return path;
-            }
-        } catch (e) {
-            console.warn('[Scraper] Failed to find Chrome via which:', e.message);
-        }
+        // The official Puppeteer Docker image guarantees Chrome is here:
+        return '/usr/bin/google-chrome-stable';
     }
 
-    // 2. Try Puppeteer's bundled Chrome as a fallback
-    try {
-        const puppeteer = await import('puppeteer');
-        if (puppeteer.executablePath) {
-             const bundledPath = puppeteer.executablePath();
-             // Verify it actually exists before returning
-             if (fs.existsSync(bundledPath)) {
-                 console.log(`[Scraper] Found bundled Chrome at: ${bundledPath}`);
-                 return bundledPath;
-             } else {
-                 console.warn(`[Scraper] Bundled Chrome path returned but file missing: ${bundledPath}`);
-             }
-        }
-    } catch (e) {
-        console.warn('[Scraper] Could not find bundled Chrome:', e.message);
-    }
-    
-    // Check common Windows paths for Chrome
+    // 2. Windows/Local Development fallback
     const paths = [
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
@@ -73,6 +43,16 @@ const getExecutablePath = async () => {
         }
     }
     
+    // 3. Last resort: try bundled (likely won't work in Docker if we skipped download)
+    try {
+        const puppeteer = await import('puppeteer');
+        if (puppeteer.executablePath) {
+             return puppeteer.executablePath();
+        }
+    } catch (e) {
+        console.warn('[Scraper] Bundled Chrome not found:', e.message);
+    }
+
     return null;
 };
 
