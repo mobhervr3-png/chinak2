@@ -14,11 +14,14 @@ COPY package*.json .puppeteerrc.cjs ./
 # Note: We use --no-cache to keep the image small
 # We do NOT set PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true so Puppeteer installs its own Chrome for Testing
 # This ensures version compatibility
-ENV PUPPETEER_EXECUTABLE_PATH="" \
+ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/google-chrome-stable" \
     PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 # Install project dependencies
 RUN npm ci
+
+# Ensure the executable path is correct and accessible (debugging step)
+RUN ls -la /usr/bin/google-chrome-stable || echo "Chrome not found at /usr/bin/google-chrome-stable"
 
 # Copy Prisma schema and generate client
 COPY prisma ./prisma

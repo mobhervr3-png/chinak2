@@ -23,26 +23,20 @@ const __dirname = path.dirname(__filename);
 import { execSync } from 'child_process';
 
 const getExecutablePath = async () => {
-    // 1. Try Puppeteer's bundled Chrome (Highest Priority for Docker)
-    try {
-        const puppeteer = await import('puppeteer');
-        if (puppeteer.executablePath) {
-             const bundledPath = puppeteer.executablePath();
-             console.log(`[Scraper] Found bundled Chrome at: ${bundledPath}`);
-             return bundledPath;
-        }
-    } catch (e) {
-        console.warn('[Scraper] Could not find bundled Chrome:', e.message);
-    }
-
     console.log(`[Scraper] PUPPETEER_EXECUTABLE_PATH env var: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
-    
-    // 0. Use `which` command on Linux to find the binary automatically
+
+    // 1. Prioritize System-Installed Chrome (since we are in Docker)
     if (process.platform === 'linux') {
         try {
-            const path = execSync('which google-chrome-stable || which google-chrome || which chromium || which chromium-browser || find / -name "chrome" -type f -executable | head -n 1').toString().trim();
+            // First check the official path
+            if (fs.existsSync('/usr/bin/google-chrome-stable')) {
+                 console.log('[Scraper] Found system Chrome at: /usr/bin/google-chrome-stable');
+                 return '/usr/bin/google-chrome-stable';
+            }
+
+            const path = execSync('which google-chrome-stable || which google-chrome || which chromium || which chromium-browser').toString().trim();
             if (path) {
-                console.log(`[Scraper] Found Chrome via 'which/find': ${path}`);
+                console.log(`[Scraper] Found Chrome via 'which': ${path}`);
                 return path;
             }
         } catch (e) {
@@ -50,7 +44,24 @@ const getExecutablePath = async () => {
         }
     }
 
-    // 1. Check if running in Docker (Render)
+    // 2. Try Puppeteer's bundled Chrome as a fallback
+    try {
+        const puppeteer = await import('puppeteer');
+        if (puppeteer.executablePath) {
+             const bundledPath = puppeteer.executablePath();
+             // Verify it actually exists before returning
+             if (fs.existsSync(bundledPath)) {
+                 console.log(`[Scraper] Found bundled Chrome at: ${bundledPath}`);
+                 return bundledPath;
+             } else {
+                 console.warn(`[Scraper] Bundled Chrome path returned but file missing: ${bundledPath}`);
+             }
+        }
+    } catch (e) {
+        console.warn('[Scraper] Could not find bundled Chrome:', e.message);
+    }
+    
+    // 3. Check if running in Docker (Render) - Environment Variable Fallback
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
         if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
             console.log(`[Scraper] Using Docker Chrome at: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
