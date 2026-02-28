@@ -48,6 +48,62 @@ const getExecutablePath = async () => {
     }
 };
 
+export async function testProxyConnection() {
+  console.log('---------------------------------------------------');
+  console.log('🧪 Testing Residential Proxy Connection (Scraper Service)');
+  console.log('---------------------------------------------------');
+  console.log(`Proxy URL: ${BRIGHT_DATA_PROXY_URL}`);
+  
+  let browser;
+  try {
+    const chromePath = await getExecutablePath();
+    if (!chromePath) throw new Error('Chrome not found');
+
+    const launchOptions = {
+      headless: "new",
+      ignoreHTTPSErrors: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        `--proxy-server=${BRIGHT_DATA_PROXY_URL}`,
+        '--ignore-certificate-errors',
+      ],
+      executablePath: chromePath,
+    };
+
+    browser = await puppeteer.launch(launchOptions);
+    const page = await browser.newPage();
+
+    if (BRIGHT_DATA_USERNAME && BRIGHT_DATA_PASSWORD) {
+        await page.authenticate({
+          username: BRIGHT_DATA_USERNAME,
+          password: BRIGHT_DATA_PASSWORD,
+        });
+    }
+
+    console.log('🚀 Connecting to ipinfo.io...');
+    await page.goto('https://ipinfo.io/json', { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+    const content = await page.$eval('body', el => el.innerText);
+    const json = JSON.parse(content);
+
+    console.log('\n✅ Proxy Connection Successful!');
+    console.log('IP:', json.ip);
+    console.log('Country:', json.country);
+    
+    return { success: true, data: json };
+
+  } catch (error) {
+    console.error('\n❌ Proxy Test Failed!', error.message);
+    return { success: false, error: error.message };
+  } finally {
+    if (browser) await browser.close();
+  }
+}
+
 export async function scrapeProduct(url) {
   let browser;
   try {

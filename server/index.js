@@ -36,7 +36,7 @@ import prisma from './prismaClient.js';
 import { normalizeArabic } from './services/aiService.js';
 import { calculateOrderShipping, calculateProductShipping, getAdjustedPrice } from './services/shippingService.js';
 import { setupLinkCheckerCron, checkAllProductLinks } from './services/linkCheckerService.js';
-import { scrapeProduct } from './services/scraperService.js';
+import { scrapeProduct, testProxyConnection } from './services/scraperService.js';
 import { createClient } from '@supabase/supabase-js';
 
 const { PrismaClient } = pkg;
@@ -2575,6 +2575,15 @@ app.post('/api/track', async (req, res) => {
 });
 
 // --- Agent / Scraper Routes ---
+app.get('/api/test-proxy', async (req, res) => {
+  try {
+    const result = await testProxyConnection();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/products/fetch-external', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
