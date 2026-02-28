@@ -1304,7 +1304,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
         "verificationCode": otpCode 
       }, { 
         headers: { 
-          'Authorization': 'Bearer sk_live_f891c78edd44691d580e53a95f9e8d138df94c3c', 
+          'Authorization': `Bearer ${process.env.OTPIQ_API_KEY}`, 
           'Content-Type': 'application/json' 
         } 
       });

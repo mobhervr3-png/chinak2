@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     }
 
     // Send via OTPIQ
-    const otpiqApiKey = 'sk_live_f891c78edd44691d580e53a95f9e8d138df94c3c'
+    const otpiqApiKey = Deno.env.get('OTPIQ_API_KEY')
     const otpiqResponse = await fetch('https://api.otpiq.com/api/sms', {
       method: 'POST',
       headers: {
