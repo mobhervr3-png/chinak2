@@ -33,6 +33,21 @@ const getExecutablePath = async () => {
         }
     }
 
+    // 2. Check standard Linux paths (Docker/Render)
+    const linuxPaths = [
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser'
+    ];
+
+    for (const p of linuxPaths) {
+        if (fs.existsSync(p)) {
+            console.log(`[Scraper] Found Linux Chrome at: ${p}`);
+            return p;
+        }
+    }
+
     // Check common Windows paths for Chrome
     const paths = [
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
