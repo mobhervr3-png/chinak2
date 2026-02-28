@@ -20,9 +20,24 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { execSync } from 'child_process';
+
 const getExecutablePath = async () => {
     console.log(`[Scraper] PUPPETEER_EXECUTABLE_PATH env var: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
     
+    // 0. Use `which` command on Linux to find the binary automatically
+    if (process.platform === 'linux') {
+        try {
+            const path = execSync('which google-chrome-stable || which google-chrome || which chromium || which chromium-browser').toString().trim();
+            if (path) {
+                console.log(`[Scraper] Found Chrome via 'which': ${path}`);
+                return path;
+            }
+        } catch (e) {
+            console.warn('[Scraper] Failed to find Chrome via which:', e.message);
+        }
+    }
+
     // 1. Check if running in Docker (Render)
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
         if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
