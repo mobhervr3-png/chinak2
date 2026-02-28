@@ -1,4 +1,10 @@
-export const categoriesPart8Additions = [
+import type { Category } from '../types/category';
+
+export const categoriesPart8Additions: {
+  parentId: number;
+  items?: Category[];
+  newGroup?: Category;
+}[] = [
   // 1. Electronics additions
   {
     parentId: 3005, // Home Appliances

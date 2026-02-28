@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://puxjtecjxfjldwxiwzrk.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1eGp0ZWNqeGZqbGR3eGl3enJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDEyNjMsImV4cCI6MjA4MzUxNzI2M30.r9TxaSGhOEWeb3RP_BEsHGQ1GOBpI0-mkU0XdW3FEOc'; 
+const supabaseUrl = 'https://keafpswwiggmoodslreg.supabase.co';
+const supabaseAnonKey = 'sb_publishable_7Q_coKRNQrh2iFpbvK9PqQ_7738OxhY'; 
 
 // Custom Storage Adapter to handle QuotaExceededError
 const customStorage = {

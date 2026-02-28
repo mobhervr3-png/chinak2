@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useCartStore } from '../store/useCartStore';
-import { Home, ShoppingBag, ShoppingCart, Heart, User, LayoutGrid } from 'lucide-react';
+import { Home, ShoppingBag, ShoppingCart, User, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface BottomNavProps {

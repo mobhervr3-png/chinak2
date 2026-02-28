@@ -1,0 +1,20 @@
+[2026-02-27T15:32:16.058Z] Error in /api/products: 
+Invalid `prisma.product.count()` invocation:
+
+
+Can't reach database server at `aws-1-eu-west-1.pooler.supabase.com:5432`
+
+Please make sure your database server is running at `aws-1-eu-west-1.pooler.supabase.com:5432`.
+PrismaClientKnownRequestError: 
+Invalid `prisma.product.count()` invocation:
+
+
+Can't reach database server at `aws-1-eu-west-1.pooler.supabase.com:5432`
+
+Please make sure your database server is running at `aws-1-eu-west-1.pooler.supabase.com:5432`.
+    at ei.handleRequestError (E:\mynewproject2\server\node_modules\@prisma\client\runtime\library.js:121:7268)
+    at ei.handleAndLogRequestError (E:\mynewproject2\server\node_modules\@prisma\client\runtime\library.js:121:6593)
+    at ei.request (E:\mynewproject2\server\node_modules\@prisma\client\runtime\library.js:121:6300)
+    at async a (E:\mynewproject2\server\node_modules\@prisma\client\runtime\library.js:130:9551)
+    at async Promise.all (index 1)
+    at async file:///E:/mynewproject2/server/index.js:3033:31

@@ -1,4 +1,6 @@
-export const categoriesPart3 = [
+import type { Category } from '../types/category';
+
+export const categoriesPart3: Category[] = [
   // Extension of Home & Living (4000)
   {
     "id": 4003,

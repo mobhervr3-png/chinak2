@@ -47,11 +47,7 @@ const ProductCard: React.FC<ProductCardProps> = React.memo(({
 
   const minPrice = minVariant ? minVariant.price : product.price;
 
-  // Simulated discovery data
-  const soldCount = React.useMemo(() => {
-    const numericId = typeof product.id === 'number' ? product.id : Number.parseInt(String(product.id), 10) || 0;
-    return (numericId * 17) % 1000 + 50;
-  }, [product.id]);
+
 
   const prefetchTimerRef = useRef<any>(null);
   const isPrefetched = useRef(false);
@@ -187,9 +183,7 @@ const ProductCard: React.FC<ProductCardProps> = React.memo(({
             </div>
           </div>
           
-          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-full border border-slate-100 dark:border-slate-700/50">
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">تم بيع {soldCount}</span>
-          </div>
+          {/* soldCount removed */}
         </div>
       </div>
     </motion.div>

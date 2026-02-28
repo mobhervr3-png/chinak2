@@ -36,6 +36,7 @@ import prisma from './prismaClient.js';
 import { normalizeArabic } from './services/aiService.js';
 import { calculateOrderShipping, calculateProductShipping, getAdjustedPrice } from './services/shippingService.js';
 import { setupLinkCheckerCron, checkAllProductLinks } from './services/linkCheckerService.js';
+import { scrapeProduct } from './services/scraperService.js';
 import { createClient } from '@supabase/supabase-js';
 
 const { PrismaClient } = pkg;
@@ -59,6 +60,35 @@ if (fs.existsSync(envPath)) {
 const supabaseUrl = process.env.SUPABASE_URL || 'https://puxjtecjxfjldwxiwzrk.supabase.co';
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1eGp0ZWNqeGZqbGR3eGl3enJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDEyNjMsImV4cCI6MjA4MzUxNzI2M30.r9TxaSGhOEWeb3RP_BEsHGQ1GOBpI0-mkU0XdW3FEOc';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+/**
+ * Generates an embedding for a search query using DeepInfra
+ */
+async function generateSearchEmbedding(text) {
+  if (!process.env.DEEPINFRA_API_KEY) return null;
+  try {
+    const response = await axios.post(
+      'https://api.deepinfra.com/v1/inference/google/embeddinggemma-300m',
+      { inputs: [text] },
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.DEEPINFRA_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 5000
+      }
+    );
+
+    let embedding = response.data.embeddings[0];
+    if (embedding && embedding.length > 384) {
+      embedding = embedding.slice(0, 384);
+    }
+    return embedding;
+  } catch (error) {
+    console.error('[Search] Failed to generate embedding:', error.message);
+    return null;
+  }
+}
 
 // --- Global Helpers ---
 
@@ -174,7 +204,7 @@ const sseMiddleware = (req, res, next) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for Nginx/HuggingFace
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for proxy servers
   next();
 };
 
@@ -226,14 +256,14 @@ const calculateBulkImportPrice = (rawPrice, domesticFee, weight, length, width, 
     // Treat rawPrice as IQD (no heuristic conversion)
     const basePrice = rawPrice;
     
-    // Formula: (Base + Domestic) * 1.15
-    const finalPrice = (basePrice + domestic) * 1.15;
-    return Math.ceil(finalPrice / 250) * 250;
+    // Formula: (Base + Domestic) * 1.0 (No profit added as requested)
+    const finalPrice = (basePrice + domestic);
+    return Math.ceil(finalPrice / 10) * 10;
   } else {
     // Sea logic matches Air now
     const basePrice = rawPrice;
-    const finalPrice = (basePrice + domestic) * 1.15;
-    return Math.ceil(finalPrice / 250) * 250;
+    const finalPrice = (basePrice + domestic);
+    return Math.ceil(finalPrice / 10) * 10;
   }
 };
 
@@ -243,11 +273,11 @@ const estimateRawPriceFromStoredPrice = (storedPrice, domesticFee, weight, lengt
 
   const domestic = Number(domesticFee) || 0;
   
-  // Inverse of (Base + Domestic) * 1.15 = Stored
-  // Base + Domestic = Stored / 1.15
-  // Base = (Stored / 1.15) - Domestic
+  // Inverse of (Base + Domestic) * 1.0 = Stored
+  // Base + Domestic = Stored
+  // Base = Stored - Domestic
   
-  const raw = (stored / 1.15) - domestic;
+  const raw = stored - domestic;
   return raw > 0 ? raw : 0;
 };
 
@@ -1966,7 +1996,7 @@ app.put('/api/admin/orders/:id/international-fee', authenticateToken, isAdmin, h
     }
 
     const oldFee = currentOrder.internationalShippingFee || 0;
-    const newTotal = Math.ceil((currentOrder.total - oldFee + newFee) / 250) * 250;
+    const newTotal = Math.ceil((currentOrder.total - oldFee + newFee) / 10) * 10;
     
     // Automatically move to AWAITING_PAYMENT when fee is set, but only if it was PENDING
     let newStatus = currentOrder.status;
@@ -2544,6 +2574,38 @@ app.post('/api/track', async (req, res) => {
   }
 });
 
+// --- Agent / Scraper Routes ---
+app.post('/api/products/fetch-external', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'URL is required' });
+
+  try {
+    const productData = await scrapeProduct(url);
+    
+    const product = await prisma.product.create({
+      data: {
+        name: productData.name,
+        price: productData.price || 0,
+        originalPrice: productData.originalPrice,
+        image: productData.image,
+        originalUrl: productData.originalUrl,
+        provider: productData.provider,
+        sellerName: productData.sellerName,
+        status: 'DRAFT',
+        isActive: true,
+        images: {
+          create: (productData.images || []).map((img, idx) => ({ url: img, order: idx }))
+        }
+      }
+    });
+
+    res.json(product);
+  } catch (error) {
+    console.error('Fetch external failed:', error);
+    res.status(500).json({ error: 'Failed to fetch product', details: error.message });
+  }
+});
+
 // Automated Reports Logic
 const generateWeeklyReport = async () => {
   const lastWeek = new Date(new Date().setDate(new Date().getDate() - 7));
@@ -2827,47 +2889,112 @@ app.get('/api/products/search', async (req, res) => {
       airShippingMinFloor: storeSettings?.airShippingMinFloor
     };
 
-    const where = { 
-      isActive: true,
-      status: 'PUBLISHED',
-      OR: [
-        { name: { contains: search } },
-        { purchaseUrl: { contains: search } }
-      ]
-    };
+    // Try Hybrid Search (Vector + Keyword)
+    let products = [];
+    let total = 0;
+    let engine = 'db';
 
-    if (maxPrice !== null) {
-      where.price = { lte: maxPrice };
-    }
+    const embedding = await generateSearchEmbedding(search);
 
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
-        where,
-        select: {
-          id: true,
-          name: true,
-          price: true,
-          basePriceIQD: true,
-          image: true,
-          isFeatured: true,
-          domesticShippingFee: true,
-          deliveryTime: true,
-          variants: {
+    if (embedding) {
+      try {
+        const { data: hybridResults, error: hybridError } = await supabase.rpc('hybrid_search_products', {
+          query_text: search,
+          query_embedding: embedding,
+          match_count: limit
+        });
+
+        if (!hybridError && hybridResults) {
+          products = hybridResults;
+          total = hybridResults.length; // Approximate total for now
+          engine = 'hybrid';
+          
+          // Enrich with variants since RPC returns partial data
+          const productIds = products.map(p => p.id);
+          const enrichedProducts = await prisma.product.findMany({
+            where: { id: { in: productIds } },
             select: {
               id: true,
-              combination: true,
+              name: true,
               price: true,
               basePriceIQD: true,
               image: true,
+              isFeatured: true,
+              domesticShippingFee: true,
+              deliveryTime: true,
+              variants: {
+                select: {
+                  id: true,
+                  combination: true,
+                  price: true,
+                  basePriceIQD: true,
+                  image: true,
+                }
+              }
             }
-          }
-        },
-        skip,
-        take: limit,
-        orderBy: { updatedAt: 'desc' }
-      }),
-      prisma.product.count({ where })
-    ]);
+          });
+          
+          // Sort back to match hybrid score order
+          products = products.map(hp => {
+            const enriched = enrichedProducts.find(ep => ep.id === hp.id);
+            return enriched || hp;
+          });
+        } else {
+          console.error('[Search] Supabase RPC error:', hybridError);
+        }
+      } catch (err) {
+        console.error('[Search] Hybrid search failed, falling back:', err);
+      }
+    }
+
+    // Fallback to standard DB search if hybrid failed or no embedding
+    if (products.length === 0) {
+      const where = { 
+        isActive: true,
+        status: 'PUBLISHED',
+        OR: [
+          { name: { contains: search } },
+          { purchaseUrl: { contains: search } }
+        ]
+      };
+
+      if (maxPrice !== null) {
+        where.price = { lte: maxPrice };
+      }
+
+      const [dbProducts, dbTotal] = await Promise.all([
+        prisma.product.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            basePriceIQD: true,
+            image: true,
+            isFeatured: true,
+            domesticShippingFee: true,
+            deliveryTime: true,
+            variants: {
+              select: {
+                id: true,
+                combination: true,
+                price: true,
+                basePriceIQD: true,
+                image: true,
+              }
+            }
+          },
+          skip,
+          take: limit,
+          orderBy: { updatedAt: 'desc' }
+        }),
+        prisma.product.count({ where })
+      ]);
+      
+      products = dbProducts;
+      total = dbTotal;
+      engine = 'db';
+    }
 
     if (!products || products.length === 0) {
       return res.json({
@@ -2875,7 +3002,7 @@ app.get('/api/products/search', async (req, res) => {
         total: 0,
         page,
         totalPages: 0,
-        engine: 'db'
+        engine
       });
     }
 
@@ -2884,7 +3011,7 @@ app.get('/api/products/search', async (req, res) => {
       total,
       page,
       totalPages: Math.ceil(total / limit),
-      engine: 'db'
+      engine
     });
   } catch (error) {
     console.error('[Products] Failed to search products:', error);
@@ -2986,6 +3113,7 @@ app.get('/api/products', async (req, res) => {
   } catch (error) {
     console.error('[Products] Failed to fetch products:', error);
     try {
+      // Write error to log file
       const logPath = path.join(__dirname, 'server_error_full.log');
       fs.appendFileSync(logPath, `[${new Date().toISOString()}] Error in /api/products: ${error.message}\n${error.stack}\nQuery: ${JSON.stringify(req.query)}\n\n`);
     } catch (e) {
@@ -2993,8 +3121,12 @@ app.get('/api/products', async (req, res) => {
     }
     
     try {
-      // Write error to public folder for debugging
-      const publicErrorPath = path.join(__dirname, '..', 'public', 'server_error.txt');
+      // Write error to public folder for debugging - ensure directory exists
+      const publicDirPath = path.join(__dirname, 'public');
+      if (!fs.existsSync(publicDirPath)) {
+        fs.mkdirSync(publicDirPath, { recursive: true });
+      }
+      const publicErrorPath = path.join(publicDirPath, 'server_error.txt');
       fs.writeFileSync(publicErrorPath, `[${new Date().toISOString()}] Error in /api/products: ${error.message}\n${error.stack}\n`);
     } catch (e) {
       console.error('Failed to write to public error log:', e);
@@ -3661,11 +3793,11 @@ async function runBulkProductsImport(products, { onProgress } = {}) {
       if (isPriceCombined) {
         finalPrice = rawPrice;
       } else if (!shippingPriceIncluded) {
-        // Exclude shipping cost but keep markup and domestic fee
-        // Formula: (Base + Domestic) * 1.20
+        // Exclude shipping cost but keep domestic fee
+        // Formula: (Base + Domestic)
         const domestic = domesticShippingFee || 0;
-        const price = (finalPriceInput + domestic) * 1.20;
-        finalPrice = Math.ceil(price / 250) * 250;
+        const price = (finalPriceInput + domestic);
+        finalPrice = Math.ceil(price / 10) * 10;
       } else {
         finalPrice = calculateBulkImportPrice(finalPriceInput, domesticShippingFee, weight, length, width, height, effectiveMethod, shippingRates);
       }
@@ -3721,8 +3853,8 @@ async function runBulkProductsImport(products, { onProgress } = {}) {
                  vPrice = finalBasePrice;
               } else if (!shippingPriceIncluded) {
                  const domestic = domesticShippingFee || 0;
-                 const price = (finalBasePrice + domestic) * 1.20;
-                 vPrice = Math.ceil(price / 250) * 250;
+                 const price = (finalBasePrice + domestic);
+                 vPrice = Math.ceil(price / 10) * 10;
               } else {
                  vPrice = calculateBulkImportPrice(finalBasePrice, domesticShippingFee, variantWeight, v.length || length, v.width || width, v.height || height, v.shippingMethod || effectiveMethod, shippingRates);
               }
@@ -4049,11 +4181,11 @@ app.post('/api/products', authenticateToken, isAdmin, hasPermission('manage_prod
     if (isPriceCombined) {
       finalPrice = rawPrice;
     } else if (!shippingPriceIncluded) {
-      // Exclude shipping cost but keep markup and domestic fee
-      // Formula: (Base + Domestic) * 1.20
+      // Exclude shipping cost but keep domestic fee
+      // Formula: (Base + Domestic)
       const domestic = domesticFee || 0;
-      const calculatedPrice = (rawPrice + domestic) * 1.20;
-      finalPrice = Math.ceil(calculatedPrice / 250) * 250;
+      const calculatedPrice = (rawPrice + domestic);
+      finalPrice = Math.ceil(calculatedPrice / 10) * 10;
     } else {
       finalPrice = calculateBulkImportPrice(rawPrice, domesticFee, weight, length, width, height, req.body.shippingMethod, shippingRates);
     }
@@ -4123,8 +4255,8 @@ app.post('/api/products', authenticateToken, isAdmin, hasPermission('manage_prod
                vPrice = variantRawPrice;
             } else if (!shippingPriceIncluded) {
                const domestic = domesticFee || 0;
-               const calculatedPrice = (variantRawPrice + domestic) * 1.20;
-               vPrice = Math.ceil(calculatedPrice / 250) * 250;
+               const calculatedPrice = (variantRawPrice + domestic);
+               vPrice = Math.ceil(calculatedPrice / 10) * 10;
             } else {
                vPrice = calculateBulkImportPrice(variantRawPrice, domesticFee, v.weight || weight, v.length || length, v.width || width, v.height || height, v.shippingMethod, shippingRates);
             }
@@ -4316,8 +4448,8 @@ app.post('/api/admin/products/bulk-import', authenticateToken, isAdmin, hasPermi
             price = rawPrice;
           } else if (!shippingPriceIncluded) {
             const domestic = domesticFee || 0;
-            const calculatedPrice = (priceInput + domestic) * 1.20;
-            price = Math.ceil(calculatedPrice / 250) * 250;
+            const calculatedPrice = (priceInput + domestic);
+            price = Math.ceil(calculatedPrice / 10) * 10;
           } else {
             price = calculateBulkImportPrice(priceInput, domesticFee, p.weight, p.length, p.width, p.height, p.shippingMethod, shippingRates);
           }
@@ -4709,8 +4841,8 @@ app.post('/api/admin/products/bulk-import', authenticateToken, isAdmin, hasPermi
                  vPrice = finalBasePrice;
               } else if (!shippingPriceIncluded) {
                  const domestic = domesticFee || 0;
-                 const calculatedPrice = (finalBasePrice + domestic) * 1.20;
-                 vPrice = Math.ceil(calculatedPrice / 250) * 250;
+                 const calculatedPrice = (finalBasePrice + domestic);
+                 vPrice = Math.ceil(calculatedPrice / 10) * 10;
               } else {
                  vPrice = calculateBulkImportPrice(finalBasePrice, domesticFee, variantWeight || productWeight, v.length || p.length, v.width || p.width, v.height || p.height, v.shippingMethod || p.shippingMethod, shippingRates);
               }
@@ -4966,7 +5098,7 @@ app.put('/api/admin/products/update-price', authenticateToken, isAdmin, hasPermi
 
     console.log('[UpdatePrice] Found old price:', oldPrice);
 
-    const roundedNewPrice = Math.ceil(newPrice / 250) * 250;
+    const roundedNewPrice = Math.ceil(newPrice / 10) * 10;
 
     // 2. Update the specific variant OR product first
     if (parsedVariantId) {
@@ -6633,7 +6765,7 @@ app.post('/api/cart', authenticateToken, async (req, res) => {
       variant?.weight || product.weight,
       variant?.length || product.length);
     const shippingFee = await calculateProductShipping(product, shippingMethod, true, variant);
-    const inclusivePrice = Math.ceil((adjustedBasePrice + shippingFee) / 250) * 250;
+    const inclusivePrice = Math.ceil((adjustedBasePrice + shippingFee) / 10) * 10;
 
     // Use a more robust approach since Prisma upsert doesn't like nulls in compound unique keys
     const existingItem = await prisma.cartItem.findFirst({
@@ -6891,7 +7023,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
     }
 
     // 6. Calculate Final Total
-    const total = Math.ceil((subtotal + internationalShippingFee - discountAmount) / 250) * 250;
+    const total = Math.ceil((subtotal + internationalShippingFee - discountAmount) / 10) * 10;
 
     console.log('[Order Creation] Data:', {
       userId,
@@ -7645,20 +7777,7 @@ if (process.env.RUN_CRON_TASKS === 'true') {
 console.log('Attempting to start server on port:', process.env.PORT || 5001);
 
 const server = httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`[HuggingFace] Server is active on port ${PORT}`);
-  console.log(`[HuggingFace] Health check: http://0.0.0.0:${PORT}/health`);
-  
-  // Keep-alive for Hugging Face (simple ping every 2 minutes)
-  setInterval(() => {
-    try {
-      const pingUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/health` : `http://localhost:${PORT}/health`;
-      if (pingUrl.startsWith('https')) {
-        https.get(pingUrl, () => {}).on('error', () => {});
-      } else {
-        // Fallback for internal ping
-      }
-    } catch (e) {}
-  }, 120000);
+  console.log(`Server is running on port ${PORT} (accessible from network)`);
   
   // MeiliSearch indexing removed
   setTimeout(() => {

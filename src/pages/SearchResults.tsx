@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { performCacheMaintenance, searchProducts } from '../services/api';
+import { searchProducts } from '../services/api';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { usePageCacheStore } from '../store/usePageCacheStore';
 import { useUserPreferencesStore } from '../store/useUserPreferencesStore';

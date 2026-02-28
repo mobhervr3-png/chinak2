@@ -16,6 +16,7 @@ import OpenAI from 'openai'; // Use OpenAI SDK for DeepInfra
 import readline from 'readline';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
+import prisma from '../prismaClient.js'; // Use central prisma client
 
 // Load .env
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +36,11 @@ if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SCRAPER_IN_PROD !
 if (process.env.DATABASE_URL) {
     try {
         const url = new URL(process.env.DATABASE_URL);
+        // Use port 5432 for direct connection if using scraper locally to avoid pgbouncer issues
+        if (url.port === '6543') {
+            url.port = '5432';
+            console.log('Adjusting DATABASE_URL port from 6543 to 5432 for local scraper stability.');
+        }
         // Use minimal connections (1) for this single-threaded scraper to avoid exhausting the pool
         url.searchParams.set('connection_limit', '1'); 
         process.env.DATABASE_URL = url.toString();
@@ -43,8 +49,8 @@ if (process.env.DATABASE_URL) {
     }
 }
 
+// Use central prisma client
 // const prisma = new PrismaClient();
-const prisma = new PrismaClient();
 
 // --- DeepInfra Embedding Service ---
 const deepinfra = new OpenAI({
@@ -61,32 +67,57 @@ async function generateEmbedding(productId) {
     try {
         const product = await prisma.product.findUnique({
             where: { id: productId },
-            select: { name: true, description: true }
+            select: { name: true, specs: true }
         });
 
         if (!product) return;
 
-        const textToEmbed = `${product.name} ${product.description || ''}`.trim().substring(0, 1000);
-        console.log(`Generating embedding for Product ${productId}...`);
+        const specsText = typeof product.specs === 'string' ? product.specs : JSON.stringify(product.specs || '');
+        const textToEmbed = `${product.name} ${specsText}`.trim().substring(0, 1000);
+        console.log(`Generating embedding for Product ${productId} (using google/embeddinggemma-300m, truncating to 384d)...`);
 
-        const response = await deepinfra.embeddings.create({
-            model: process.env.DEEPINFRA_EMBEDDING_MODEL || 'google/embeddinggemma-300m',
-            input: textToEmbed,
-        });
+        // Use a timeout for the embedding generation to prevent hanging
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-        const embedding = response.data[0].embedding;
+        try {
+            const response = await deepinfra.embeddings.create({
+                model: 'google/embeddinggemma-300m', 
+                input: textToEmbed,
+            }, { signal: controller.signal });
 
-        // Update the product with the embedding vector
-        // Note: We use executeRaw because Prisma doesn't natively support pgvector well in standard methods
-        await prisma.$executeRawUnsafe(
-            'UPDATE "Product" SET embedding = $1::vector WHERE id = $2',
-            embedding,
-            productId
-        );
+            clearTimeout(timeoutId);
 
-        console.log(`✅ Embedding generated and saved for Product ${productId}`);
+            let embedding = response.data[0].embedding;
+            
+            // Truncate embedding if it exceeds 384 dimensions (e.g. 768d -> 384d)
+            if (embedding.length > 384) {
+                console.log(`⚠️ Truncating embedding from ${embedding.length}d to 384d to match DB schema.`);
+                embedding = embedding.slice(0, 384);
+            }
+
+            // Update the product with the embedding vector
+            // Note: We use executeRaw because Prisma doesn't natively support pgvector well in standard methods
+            await prisma.$executeRawUnsafe(
+                'UPDATE "Product" SET embedding = $1::vector WHERE id = $2',
+                embedding,
+                productId
+            );
+
+            console.log(`✅ Embedding generated and saved for Product ${productId}`);
+        } catch (apiError) {
+            clearTimeout(timeoutId);
+            throw apiError;
+        }
     } catch (error) {
-        console.error(`❌ Embedding generation failed for Product ${productId}:`, error.message);
+        if (error.name === 'AbortError') {
+            console.error(`❌ Embedding generation timed out for Product ${productId} after 30s.`);
+        } else {
+            console.error(`❌ Embedding generation failed for Product ${productId}:`, error.message);
+        }
+        if (error.message?.includes('allow_list')) {
+            console.error('⚠️ Supabase IP Blocked (Embedding Task). Check Network Restrictions.');
+        }
     }
 }
 
@@ -95,11 +126,9 @@ let hasPageError = false;
 
 // --- DATABASE SCHEMA HEALING ---
 async function ensureDatabaseSchema() {
-    // Skip schema check to save DB connections if flag is set or environment is production-like
-    if (process.env.SKIP_SCHEMA_CHECK === 'true') {
-        console.log('Skipping schema check (SKIP_SCHEMA_CHECK=true)');
-        return;
-    }
+    // Skip schema check entirely in the scraper as requested/to avoid connection issues
+    console.log('Skipping schema check for stability...');
+    return;
     
     try {
         console.log('Checking database schema...');
@@ -197,12 +226,14 @@ const humanScroll = async (page, distance, options = {}) => {
 
 // --- OpenAI / DeepInfra Setup ---
 const DEEPINFRA_API_KEY = 'PH4r4lox3jZBlFQROJ78bdaaLnuUKvNB'; // Hardcoded as requested
-const MAIN_MODEL = 'google/gemma-3-4b-it';
-const BACKUP_MODEL = 'google/gemma-3-12b-it';
+const MODEL_4B = 'google/gemma-3-4b-it';
+const MODEL_12B = 'google/gemma-3-12b-it';
 
 const openai = new OpenAI({
     baseURL: 'https://api.deepinfra.com/v1/openai',
-    apiKey: DEEPINFRA_API_KEY
+    apiKey: DEEPINFRA_API_KEY,
+    timeout: 120000, // Increased to 120 seconds for large batch processing (30+ items)
+    maxRetries: 2
 });
 
 // --- Constants ---
@@ -394,7 +425,7 @@ async function autoScroll(page, maxScrolls = 20) {
 }
 
 // --- Translation Function ---
-async function translateText(text, context = 'general', extraInfo = '') {
+async function translateText(text, context = 'general', extraInfo = '', targetModel = MODEL_12B, backupModel = MODEL_4B) {
     if (!text || !text.trim()) return '';
     // Skip if already looks Arabic (basic check)
     if (/[\u0600-\u06FF]/.test(text) && text.length > text.length * 0.5) return text;
@@ -403,8 +434,9 @@ async function translateText(text, context = 'general', extraInfo = '') {
                     
     CRITICAL RULES:
     1. Return ONLY the Arabic translation, no explanations.
-    2. If the text is a brand name or technical term, keep it in English.
-    3. DO NOT include any delivery promises, shipping times, or dates (e.g., "Delivered in 48 hours", "2024", "Fast Shipping"). REMOVE these phrases completely from the translation.`;
+    2. If the text is a brand name or technical term (e.g., "mAh", "V", "W", "kg", "g", "mm", "cm"), keep it in English. NEVER translate "mAh" as "متر مكعب".
+    3. REMOVE all marketing promises, guarantees, and return policies (e.g., "free use 30 days", "10 years guarantee", "7 days return", "official warranty"). DO NOT include these in the translation.
+    4. DO NOT include any delivery promises, shipping times, or dates (e.g., "Delivered in 48 hours", "2024", "Fast Shipping"). REMOVE these phrases completely.`;
 
     if (context === 'product_name') {
         systemContent = `You are a professional translator for the Iraqi market. 
@@ -420,72 +452,221 @@ async function translateText(text, context = 'general', extraInfo = '') {
         4. STRICTLY AVOID REPETITION.
         5. Return ONLY the Arabic name. No explanations.`;
     } else if (context === 'option') {
-        systemContent = `Translate this product variant/option name to concise Arabic (e.g., Color, Size, Style).
+        systemContent = `Translate this product variant/option name to descriptive Arabic.
         - "2件套" -> "طقم قطعتين"
         - "黑色" -> "أسود"
-        - Keep numbers and units clear.
-        - Return ONLY the translation. NO extra text.
-        - REMOVE any Russian/Cyrillic characters.
-        - If the text is garbage/random characters, try to infer or return empty string.`;
+        - "至尊款：全屋净化恒湿【澎湃丰盈大雾】" -> "الإصدار الفاخر: تنقية وترطيب كامل المنزل [ضباب كثيف]"
+        
+        CRITICAL RULES:
+        1. Return ONLY the translation. NO extra text, no layout fragments (like "a", "b", "c").
+        2. Ensure you translate the full meaning, including technical specs or features mentioned in brackets.
+        3. DO NOT split words or translate single layout letters.
+        4. If the text is a single non-meaningful character or layout fragment, return an empty string.
+        5. Keep numbers and units (mAh, V, W, kg, etc.) in English. NEVER translate "mAh" as "متر مكعب".
+        6. REMOVE all marketing phrases, guarantees, and return policies (e.g., "free use 30 days", "10 years warranty", "returns allowed").
+        7. MANDATORY: The output MUST be in Arabic. DO NOT leave any Chinese characters in the output.
+        8. REMOVE any Russian/Cyrillic characters.
+        9. If the text is garbage/random characters, return an empty string.`;
     }
 
     const tryTranslate = async (model) => {
-        const response = await openai.chat.completions.create({
-            model: model,
-            messages: [
-                {
-                    role: "system",
-                    content: systemContent
-                },
-                {
-                    role: "user",
-                    content: text
+        let attempts = context === 'option' ? 3 : 1;
+        let lastError;
+
+        for (let i = 0; i < attempts; i++) {
+            try {
+                const response = await openai.chat.completions.create({
+                    model: model,
+                    messages: [
+                        {
+                            role: "system",
+                            content: systemContent
+                        },
+                        {
+                            role: "user",
+                            content: text
+                        }
+                    ],
+                    temperature: 0.3,
+                    max_tokens: 1000
+                });
+                let content = response.choices[0].message.content.trim();
+                content = content.replace(/```/g, ''); // Remove code blocks markers
+                
+                // Cleanup: Remove explanations if the model ignores the "ONLY" rule
+                const explanationMarkers = ['---', '**Explanation', '**Rationale', 'Note:', 'Explanation:'];
+                for (const marker of explanationMarkers) {
+                    if (content.includes(marker)) {
+                        content = content.split(marker)[0].trim();
+                    }
                 }
-            ],
-            temperature: 0.3,
-            max_tokens: 1000
-        });
-        let content = response.choices[0].message.content.trim();
-        content = content.replace(/```/g, ''); // Remove code blocks markers
-        
-        // Cleanup: Remove explanations if the model ignores the "ONLY" rule
-        // Check for common separators like "---", "**Explanation", "Note:"
-        const explanationMarkers = ['---', '**Explanation', '**Rationale', 'Note:', 'Explanation:'];
-        for (const marker of explanationMarkers) {
-            if (content.includes(marker)) {
-                content = content.split(marker)[0].trim();
+                
+                if (content.includes('\n')) {
+                     const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                     if (lines.length > 0) {
+                         content = lines[0];
+                     }
+                }
+
+                content = content.replace(/[\u0400-\u04FF\u0500-\u052F]/g, '').trim();
+                content = content.replace(/^[-/]+|[-/]+$/g, '').trim();
+                let finalContent = content.replace(/^["']|["']$/g, '').trim();
+
+                // If context is 'option', verify no Chinese remains
+                if (context === 'option' && /[\u4e00-\u9fa5]/.test(finalContent)) {
+                    console.warn(`[AI] Attempt ${i+1} for option translation still contains Chinese: ${finalContent}. Retrying...`);
+                    continue; 
+                }
+
+                return finalContent;
+            } catch (e) {
+                console.error(`AI Error in tryTranslate (${model}) attempt ${i+1}:`, e.message);
+                lastError = e;
             }
         }
-        
-        // If multiple lines, assume the first line is the title/translation
-        // and subsequent lines are commentary (unless it's a very long single paragraph)
-        if (content.includes('\n')) {
-             const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-             if (lines.length > 0) {
-                 content = lines[0];
-             }
-        }
-
-        // Post-Processing: Remove Cyrillic characters (Russian, etc.)
-        // Range: \u0400-\u04FF (Cyrillic), \u0500-\u052F (Cyrillic Supplement)
-        content = content.replace(/[\u0400-\u04FF\u0500-\u052F]/g, '').trim();
-
-        // Remove extra hyphens or slashes if they are left dangling
-        content = content.replace(/^[-/]+|[-/]+$/g, '').trim();
-
-        return content.replace(/^["']|["']$/g, '').trim();
+        throw lastError || new Error("Translation failed after multiple attempts");
     };
 
     try {
-        // console.log(`Translating with ${MAIN_MODEL}...`);
-        return await tryTranslate(MAIN_MODEL);
+        return await tryTranslate(targetModel);
     } catch (error) {
-        console.warn(`Translation failed with ${MAIN_MODEL}, trying backup ${BACKUP_MODEL}...`);
+        console.warn(`Translation failed with ${targetModel}, trying backup ${backupModel}...`);
         try {
-            return await tryTranslate(BACKUP_MODEL);
+            return await tryTranslate(backupModel);
         } catch (backupError) {
             console.error('Translation error (both models failed):', backupError.message);
-            return text; // Fallback to original
+            // For reviews, it's okay to return original text if translation fails
+            if (context === 'review') {
+                return text;
+            }
+            // For other contexts (like options), if it's still Chinese, we've tried our best but failed
+            return text; 
+        }
+    }
+}
+
+// --- Batch Translation Function ---
+async function batchTranslate(texts, context = 'option', targetModel = MODEL_12B, backupModel = MODEL_4B) {
+    if (!texts || texts.length === 0) return [];
+    
+    // Filter out empty or already Arabic strings to save tokens
+    const needsTranslation = texts.map((text, index) => ({
+        text: text || '',
+        index,
+        skip: !text || !text.trim() || (/[\u0600-\u06FF]/.test(text) && text.length > text.length * 0.5)
+    }));
+
+    const toTranslate = needsTranslation.filter(item => !item.skip);
+    if (toTranslate.length === 0) return texts;
+
+    const systemContent = context === 'option' 
+        ? `Translate these product variant/option names to descriptive Arabic.
+           Return a JSON object with a key "translations" containing an array of strings in the same order.
+           - Return ONLY the JSON object.
+           - Ensure you translate the full meaning, including technical specs or features mentioned in brackets.
+           - "黑色" -> "أسود"
+           - "至尊款：全屋净化恒湿【澎湃丰盈大雾】" -> "الإصدار الفاخر: تنقية وترطيب كامل المنزل [ضباب كثيف]"
+           - DO NOT translate or return layout fragments (like "a", "b", "c" or Arabic equivalents).
+           - DO NOT split words or translate single layout letters.
+           - DO NOT return individual Arabic letters like "ا", "ل", "س" as separate options.
+           - If an option is a single non-meaningful character, return an empty string for it.
+           - Keep brand names and technical units (mAh, V, W, kg, etc.) in English. NEVER translate "mAh" as "متر مكعب".
+           - REMOVE all marketing promises, guarantees, and return policies (e.g., "30 days free use", "10 years guarantee", "return policy").
+           - REMOVE delivery promises or dates.
+           - MANDATORY: All translations MUST be in Arabic. DO NOT leave any Chinese characters in the JSON values.`
+        : `Translate these product reviews to natural Iraqi Arabic.
+           Return a JSON object with a key "translations" containing an array of strings in the same order.
+           - Return ONLY the JSON object.`;
+
+    const tryBatch = async (model) => {
+        let attempts = context === 'option' ? 3 : 1;
+        let lastError;
+
+        for (let i = 0; i < attempts; i++) {
+            try {
+                console.log(`[AI] Sending batch request (${model}) attempt ${i+1} with ${toTranslate.length} items...`);
+                
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('AI Request Timeout (Manual)')), 110000)
+                );
+
+                const responsePromise = openai.chat.completions.create({
+                    model: model,
+                    messages: [
+                        { role: "system", content: systemContent },
+                        { role: "user", content: JSON.stringify(toTranslate.map(item => item.text)) }
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.3
+                });
+
+                const response = await Promise.race([responsePromise, timeoutPromise]);
+
+                let content = response.choices[0].message.content.trim();
+                let results;
+                try {
+                    const parsed = JSON.parse(content);
+                    results = parsed.translations || (Array.isArray(parsed) ? parsed : Object.values(parsed)[0]);
+                } catch (e) {
+                    console.warn(`[AI] Failed to parse JSON response: ${e.message}`);
+                    results = content.split('\n').map(l => l.replace(/^[0-9.-]+\s*/, '').trim());
+                }
+                
+                if (results && Array.isArray(results)) {
+                    // Check if any options still contain Chinese
+                    if (context === 'option') {
+                        const stillHasChinese = results.some(r => r && /[\u4e00-\u9fa5]/.test(r));
+                        if (stillHasChinese) {
+                            console.warn(`[AI] Batch translation attempt ${i+1} still contains Chinese. Retrying...`);
+                            continue;
+                        }
+                    }
+                    console.log(`[AI] Successfully extracted ${results.length} translations.`);
+                    return results;
+                } else {
+                    console.warn(`[AI] Extracted results is not an array:`, results);
+                    continue;
+                }
+            } catch (e) {
+                console.error(`AI Error in tryBatch (${model}) attempt ${i+1}:`, e.message);
+                lastError = e;
+            }
+        }
+        throw lastError || new Error("Batch translation failed after multiple attempts");
+    };
+
+    try {
+        const translatedValues = await tryBatch(targetModel);
+        
+    // Reconstruct the full array in original order
+    const finalResults = [...texts];
+    let translateIdx = 0;
+    needsTranslation.forEach((item, i) => {
+        if (!item.skip) {
+            const translated = (translatedValues && translatedValues[translateIdx]) ? translatedValues[translateIdx] : item.text;
+            finalResults[i] = (translated && translated.trim()) ? translated : item.text;
+            translateIdx++;
+        }
+    });
+    return finalResults;
+    } catch (error) {
+        console.warn(`Batch translation failed with ${targetModel}, trying backup ${backupModel}: ${error.message}`);
+        try {
+            const translatedValues = await tryBatch(backupModel);
+            const finalResults = [...texts];
+            let translateIdx = 0;
+            needsTranslation.forEach((item, i) => {
+                if (!item.skip) {
+                    const translated = (translatedValues && translatedValues[translateIdx]) ? translatedValues[translateIdx] : item.text;
+                    finalResults[i] = (translated && translated.trim()) ? translated : item.text;
+                    translateIdx++;
+                }
+            });
+            return finalResults;
+        } catch (backupError) {
+            console.warn(`Batch translation failed with backup as well, falling back to individual: ${backupError.message}`);
+            // Individual fallback will also use the retry logic now
+            return Promise.all(texts.map(t => translateText(t, context, '', targetModel, backupModel)));
         }
     }
 }
@@ -499,8 +680,13 @@ async function formatDescriptionToKV(text) {
     Text: "${text}"
     
     Return a valid JSON object where keys are the attribute names (translated to Arabic) and values are the attribute values (translated to Arabic).
-    Example input: "Color: Red, Size: XL"
-    Example output: {"اللون": "أحمر", "المقاس": "XL"}
+    
+    CRITICAL RULES:
+    1. Keep technical units (mAh, V, W, kg, etc.) in English. NEVER translate "mAh" as "متر مكعب".
+    2. Translate general terms to clear Arabic.
+    
+    Example input: "Color: Red, Size: XL, Battery: 5000mAh"
+    Example output: {"اللون": "أحمر", "المقاس": "XL", "البطارية": "5000mAh"}
     
     Return ONLY the raw JSON object.
     `;
@@ -532,11 +718,11 @@ async function formatDescriptionToKV(text) {
     };
 
     try {
-        return await tryFormat(MAIN_MODEL);
+        return await tryFormat(MODEL_12B);
     } catch (error) {
-        console.warn(`Description formatting failed with ${MAIN_MODEL}, trying backup...`);
+        console.warn(`Description formatting failed with ${MODEL_12B}, trying backup ${MODEL_4B}...`);
         try {
-            return await tryFormat(BACKUP_MODEL);
+            return await tryFormat(MODEL_4B);
         } catch (e) {
             console.error('Description formatting error:', e.message);
             // Fallback: return simple object with full text
@@ -587,12 +773,12 @@ async function generateAiMetadata(productName, description) {
     };
 
     try {
-        // console.log(`Generating metadata with ${MAIN_MODEL}...`);
-        return await tryGenerate(MAIN_MODEL);
+        // console.log(`Generating metadata with ${MODEL_12B}...`);
+        return await tryGenerate(MODEL_12B);
     } catch (error) {
-        console.warn(`Metadata generation failed with ${MAIN_MODEL}, trying backup ${BACKUP_MODEL}...`);
+        console.warn(`Metadata generation failed with ${MODEL_12B}, trying backup ${MODEL_4B}...`);
         try {
-            return await tryGenerate(BACKUP_MODEL);
+            return await tryGenerate(MODEL_4B);
         } catch (backupError) {
             console.error('Metadata generation error:', backupError.message);
             return {}; // Return empty object on failure
@@ -665,9 +851,33 @@ async function saveProductToDb(productData) {
 
         // 2. Save to Database (Prisma)
         console.log('Checking database for existing product...');
-        const existingProduct = await prisma.product.findFirst({
-            where: { purchaseUrl: productData.url }
-        });
+        
+        // Ensure productData.url is present before querying
+        if (!productData.url) {
+            console.error('Save Error: productData.url is missing. Cannot check for duplicates.');
+            return;
+        }
+
+        let existingProduct = null;
+        try {
+            existingProduct = await prisma.product.findFirst({
+                where: { purchaseUrl: productData.url }
+            });
+        } catch (dbErr) {
+            console.error(`\n❌ Database Query Error (findFirst): ${dbErr.message}`);
+            
+            if (dbErr.message.includes('allow_list')) {
+                console.error('\n⚠️ SUPABASE CONNECTION BLOCKED!');
+                console.error('The scraper is running from an IP address not allowed by your Supabase project.');
+                console.error('To fix this:');
+                console.error('1. Go to Supabase Dashboard -> Settings -> Database');
+                console.error('2. Scroll to "Network Restrictions"');
+                console.error('3. Add your current IP address (or allow all IPs for testing).');
+                console.error('4. Alternatively, use a local database or run the scraper on Render.\n');
+            }
+            
+            throw dbErr; // Rethrow to stop the scraper gracefully
+        }
 
         if (existingProduct) {
             console.log(`Skipping duplicate in DB (ID: ${existingProduct.id})`);
@@ -680,59 +890,38 @@ async function saveProductToDb(productData) {
         // Filter out Chinese characters from options
         const containsChinese = (str) => /[\u4e00-\u9fa5]/.test(str);
         
-        // Filter out invalid/suspicious options
-        const invalidKeywords = [
-            '定制', '专拍', '补差', '邮费', '不发货', '联系客服', // Chinese
-            'تخصيص', 'اتصال', 'رابط', 'فرق', 'إيداع', 'لا يرسل', 'خدمة العملاء', 'مخصص' // Arabic
-        ];
-
-        // 1. Filter
+        // 1. Filter & Deduplicate
+        const seenOptionTexts = new Set();
         let validOptions = (productData.generated_options || []).filter(opt => {
             const text = (opt.color || '') + ' ' + (opt.sizes ? opt.sizes.join(' ') : '');
-            const hasInvalidKeyword = invalidKeywords.some(kw => text.includes(kw));
-            if (hasInvalidKeyword) {
-                console.log(`Skipping invalid/suspicious option: ${text}`);
+            
+            // Check Duplicates (based on raw text)
+            const uniqueKey = text.trim();
+            if (seenOptionTexts.has(uniqueKey)) {
+                // console.log(`Skipping duplicate option from source: ${text}`);
                 return false;
             }
+            seenOptionTexts.add(uniqueKey);
+
             return true;
         });
 
-        // 2. Translate (Async)
-        const optionTranslationCache = new Map();
-        const getTranslatedOption = async (text) => {
-            if (!text || !containsChinese(text)) return text;
-            if (optionTranslationCache.has(text)) return optionTranslationCache.get(text);
-            const translated = await translateText(text, 'option');
-            if (translated) {
-                optionTranslationCache.set(text, translated);
-                return translated;
-            }
-            return text;
-        };
+        // Update the source data to reflect the filtered list (so the JSON in DB is also clean)
+        productData.generated_options = validOptions;
 
+        // 2. Process unique colors and sizes for DB structure
         const colors = new Map(); // value -> original
         const sizes = new Map();  // value -> original
 
-        // Process options for translation and unique collection
         for (const opt of validOptions) {
             if (opt.color) {
-                let colorValue = opt.color;
-                if (containsChinese(colorValue)) {
-                    console.log(`Chinese color detected: ${colorValue}. Attempting translation...`);
-                    const translatedColor = await getTranslatedOption(colorValue);
-                    if (translatedColor && !containsChinese(translatedColor)) {
-                        opt.color = translatedColor;
-                        colorValue = translatedColor;
-                    }
-                }
+                const colorValue = opt.color;
                 if (!colors.has(colorValue)) colors.set(colorValue, opt.originalColor || colorValue);
             }
 
             if (opt.sizes && Array.isArray(opt.sizes)) {
                 opt.sizes.forEach(s => {
                     const original = (s === opt.sizes[0] && opt.originalSize) ? opt.originalSize : s;
-                     // scraper2 logic for sizes: use anyway even if Chinese, but we can translate if we want.
-                     // scraper2: if (containsChinese(s)) console.log... but uses it.
                     if (!sizes.has(s)) sizes.set(s, original);
                 });
             }
@@ -764,28 +953,36 @@ async function saveProductToDb(productData) {
         const calculateFinalPrice = (base) => {
             const price = Number(base) || 0;
             if (price <= 0) return 0;
-            return Math.ceil((price * 1.15) / 10) * 10;
+            // Add 15% profit margin per user's request (scraper-only)
+            const priceWithMargin = price * 1.15;
+            const final = Math.ceil(priceWithMargin / 10) * 10;
+            console.log(`[DEBUG] Price Calculation: Raw IQD ${price} -> +15% Margin = ${priceWithMargin.toFixed(1)} -> Final = ${final}`);
+            return final;
         };
 
         // Build Variants Array for Prisma
         const variantsCreateData = [];
+        const seenCombinations = new Set();
+
         for (const opt of validOptions) {
              const color = opt.color;
              const variantImg = opt.thumbnail || productData.main_images[0] || '';
              
-             // Price normalization logic from scraper2
-             // "normalizeVariantBasePrice"
              let variantPrice = parseFloat(opt.price) || parseFloat(productData.general_price) || 0;
-             // Scraper2 multiplies by 200 if < 100 or < 1000 while main > 5000.
-             // Our opt.price in scraper.js is ALREADY multiplied by 200 (line 1026: parseFloat(...) * 200).
-             // So we might not need further multiplication, but let's be safe.
-             // Actually, line 1026: `price = parseFloat(...) * 200`. So it is already in IQD.
+             const variantCny = opt.cnyPrice || 0;
              
              if (opt.sizes && Array.isArray(opt.sizes) && opt.sizes.length > 0) {
                  for (const size of opt.sizes) {
+                     const comboKey = `${color}|${size}`;
+                     if (seenCombinations.has(comboKey)) continue;
+                     seenCombinations.add(comboKey);
+
+                     const finalIqd = calculateFinalPrice(variantPrice);
+                     console.log(`[DEBUG] Variant: "${color}" - "${size}" | CNY: ${variantCny} -> IQD (Converted + 15%): ${finalIqd}`);
+
                      variantsCreateData.push({
                         combination: JSON.stringify({ "اللون": color, "المقاس": size }),
-                        price: calculateFinalPrice(variantPrice),
+                        price: finalIqd,
                         basePriceIQD: variantPrice,
                         image: variantImg,
                         weight: 0,
@@ -796,9 +993,16 @@ async function saveProductToDb(productData) {
                      });
                  }
              } else {
+                 const comboKey = `${color}`;
+                 if (seenCombinations.has(comboKey)) continue;
+                 seenCombinations.add(comboKey);
+
+                 const finalIqd = calculateFinalPrice(variantPrice);
+                 console.log(`[DEBUG] Variant: "${color}" | CNY: ${variantCny} -> IQD (Converted + 15%): ${finalIqd}`);
+
                  variantsCreateData.push({
                     combination: JSON.stringify({ "اللون": color }),
-                    price: calculateFinalPrice(variantPrice),
+                    price: finalIqd,
                     basePriceIQD: variantPrice,
                     image: variantImg,
                     weight: 0,
@@ -811,47 +1015,62 @@ async function saveProductToDb(productData) {
         }
 
         // Create Product
-        const newProduct = await prisma.product.create({
-            data: {
-                name: productData.product_name,
-                price: calculateFinalPrice(productData.general_price),
-                basePriceIQD: parseFloat(productData.general_price) || 0,
-                image: productData.main_images && productData.main_images.length > 0 ? productData.main_images[0] : '',
-                purchaseUrl: productData.url,
-                specs: JSON.stringify(productData.product_details),
-                aiMetadata: productData.aiMetadata || {},
-                scrapedReviews: productData.scrapedReviews ? productData.scrapedReviews.map(rev => ({
-                    name: rev.name,
-                    photos: rev.photos || [],
-                    comment: rev.comment
-                })) : [],
-                generated_options: productData.generated_options || [], // Store full options JSON
-                isAirRestricted: false,
-                isActive: true,
-                status: 'PUBLISHED',
-                
-                // Create Options inline
-                options: {
-                    create: optionsCreateData
-                },
-                // Create Variants inline
-                variants: {
-                    create: variantsCreateData
+        let newProduct;
+        try {
+            newProduct = await prisma.product.create({
+                data: {
+                    name: productData.product_name,
+                    price: calculateFinalPrice(productData.general_price),
+                    basePriceIQD: parseFloat(productData.general_price) || 0,
+                    image: productData.main_images && productData.main_images.length > 0 ? productData.main_images[0] : '',
+                    purchaseUrl: productData.url,
+                    specs: JSON.stringify(productData.product_details),
+                    aiMetadata: productData.aiMetadata || {},
+                    scrapedReviews: productData.scrapedReviews ? productData.scrapedReviews.map(rev => ({
+                        name: rev.name,
+                        photos: rev.photos || [],
+                        comment: rev.comment
+                    })) : [],
+                    generated_options: productData.generated_options || [], // Store full options JSON
+                    isAirRestricted: false,
+                    isActive: true,
+                    status: 'PUBLISHED',
+                    
+                    // Create Options inline
+                    options: {
+                        create: optionsCreateData
+                    },
+                    // Create Variants inline
+                    variants: {
+                        create: variantsCreateData
+                    }
                 }
+            });
+            console.log(`Product created: ID ${newProduct.id}`);
+        } catch (createErr) {
+            console.error(`\n❌ Database Creation Error: ${createErr.message}`);
+            if (createErr.message.includes('allow_list')) {
+                console.error('⚠️ Supabase IP Blocked (Product Creation). Scraper cannot save to DB.');
+                throw createErr;
             }
-        });
-        console.log(`Product created: ID ${newProduct.id}`);
+            return; // Fail on this product
+        }
 
         // Create Product Images (Gallery)
-        if (productData.main_images && productData.main_images.length > 0) {
-            await prisma.productImage.createMany({
-                data: productData.main_images.map((url, i) => ({
-                    productId: newProduct.id,
-                    url: url,
-                    order: i,
-                    type: "GALLERY"
-                }))
-            });
+        if (newProduct && productData.main_images && productData.main_images.length > 0) {
+            try {
+                await prisma.productImage.createMany({
+                    data: productData.main_images.map((url, i) => ({
+                        productId: newProduct.id,
+                        url: url,
+                        order: i,
+                        type: "GALLERY"
+                    }))
+                });
+            } catch (imgErr) {
+                console.error(`\n❌ Error creating product images: ${imgErr.message}`);
+                // Don't throw here, the product is already created
+            }
         }
 
         // Create Description Images
@@ -868,8 +1087,10 @@ async function saveProductToDb(productData) {
 
         console.log(`✅ Successfully inserted into DB! Product ID: ${newProduct.id}`);
 
-        // Trigger embedding generation
-        await generateEmbedding(newProduct.id);
+        // Trigger embedding generation (Non-blocking as requested to avoid scraper delay)
+        generateEmbedding(newProduct.id).catch(err => {
+            console.error(`Background embedding generation error for product ${newProduct.id}:`, err.message);
+        });
 
     } catch (e) {
         console.error('Save Error:', e.message);
@@ -877,28 +1098,70 @@ async function saveProductToDb(productData) {
 }
 
 // Cookie Management
-const COOKIE_FILE = path.join(__dirname, '..', 'pinduoduo-cookies.json');
+const COOKIES_DIR = path.join(__dirname, '..', 'cookies');
+let currentCookieFile = null;
+
+// Ensure cookies directory exists
+if (!fs.existsSync(COOKIES_DIR)) {
+    fs.mkdirSync(COOKIES_DIR, { recursive: true });
+}
+
+function getRandomCookieFile() {
+    try {
+        const files = fs.readdirSync(COOKIES_DIR).filter(f => f.endsWith('.json'));
+        if (files.length === 0) return null;
+        const randomFile = files[Math.floor(Math.random() * files.length)];
+        return path.join(COOKIES_DIR, randomFile);
+    } catch (e) {
+        console.error('Error reading cookies directory:', e.message);
+        return null;
+    }
+}
 
 async function saveCookies(page) {
+    if (!currentCookieFile) return;
     try {
         const cookies = await page.cookies();
-        fs.writeFileSync(COOKIE_FILE, JSON.stringify(cookies, null, 2));
-        // console.log('Cookies saved.');
+        fs.writeFileSync(currentCookieFile, JSON.stringify(cookies, null, 2));
+        // console.log(`Cookies saved to ${path.basename(currentCookieFile)}`);
     } catch (e) {
         console.error('Failed to save cookies:', e.message);
     }
 }
 
 async function loadCookies(page) {
-    if (fs.existsSync(COOKIE_FILE)) {
+    // Clear current cookies first to ensure a clean slate for the new account
+    try {
+        const client = await page.target().createCDPSession();
+        await client.send('Network.clearBrowserCookies');
+        // console.log('Cleared existing cookies.');
+    } catch (e) {
+        console.error('Failed to clear existing cookies:', e.message);
+    }
+
+    currentCookieFile = getRandomCookieFile();
+    if (currentCookieFile && fs.existsSync(currentCookieFile)) {
         try {
-            const cookies = JSON.parse(fs.readFileSync(COOKIE_FILE));
+            const cookies = JSON.parse(fs.readFileSync(currentCookieFile));
             await page.setCookie(...cookies);
-            console.log(`Loaded ${cookies.length} cookies.`);
+            console.log(`[COOKIE-ROTATION] Loaded ${cookies.length} cookies from ${path.basename(currentCookieFile)}.`);
         } catch (e) {
             console.error('Failed to load cookies:', e.message);
         }
+    } else {
+        console.log('No cookie files found in server/cookies/. Proceeding without cookies.');
     }
+}
+
+async function rotateCookies(page) {
+    console.log('\n🔄 [COOKIE-ROTATION] Rotating cookies due to 403/424 or Captcha...');
+    await loadCookies(page);
+    hasPageError = false; // Reset the flag
+    
+    // After rotation, try to navigate back to the target URL
+    console.log('🔄 [COOKIE-ROTATION] Navigating back to target URL...');
+    await page.evaluate((url) => window.location.href = url, CATEGORY_URL);
+    await randomDelay(5000, 10000); // Wait for load
 }
 
 // Browser Creation
@@ -1009,8 +1272,11 @@ async function createBrowser(useGuest = false, initialUrl = null) {
         '--disable-blink-features=AutomationControlled', // Critical for anti-detection
         '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
         '--lang=zh-CN,zh',
-        `--remote-debugging-port=${debugPort}` // Enable Debug Port for future connections
+        `--remote-debugging-port=${debugPort}`, // Enable Debug Port for future connections
+        '--proxy-server=http://192.168.2.150:7890' // Use local VPN/Proxy
     ];
+    
+    console.log('Using Proxy: http://192.168.2.150:7890');
     
     // Immediate Navigation: Add URL to args
     if (initialUrl) {
@@ -1127,7 +1393,12 @@ async function scrapeProduct(page, url) {
                 return null; // Caller will handle this by navigating back
             }
         } catch (dbErr) {
-            console.warn(`[Duplicate Check] DB Error checking for duplicate: ${dbErr.message}. Proceeding with scrape...`);
+            console.warn(`[Duplicate Check] DB Error checking for duplicate: ${dbErr.message}`);
+            if (dbErr.message.includes('allow_list')) {
+                console.error('⚠️ Supabase IP Blocked (Duplicate Check). Scraper cannot query DB.');
+                throw dbErr; // Stop if blocked
+            }
+            console.log('Proceeding with scrape anyway (DB might be temporary down)...');
         }
     }
 
@@ -1379,38 +1650,70 @@ async function scrapeProduct(page, url) {
         // Step 3: Extract Options from .TpUpcNRp
         const generated_options = await page.evaluate(() => {
             const options = [];
-            const items = document.querySelectorAll('.TpUpcNRp');
-            console.log('[DEBUG] Found ' + items.length + ' items with class .TpUpcNRp');
+            // Target the specific UL provided by the user for reliability
+            const container = document.querySelector('ul.IENSVgAB');
+            const items = container ? container.querySelectorAll('li') : document.querySelectorAll('.TpUpcNRp');
+            
+            console.log('[AI-Scraper] Found ' + items.length + ' items with class .TpUpcNRp');
             items.forEach((item, index) => {
-                // User said "img is inside .PQoZYCec", so we look for 'img' within that class
+                // Image is inside .PQoZYCec
                 let imgEl = item.querySelector('.PQoZYCec img');
-                // Fallback: in case .PQoZYCec IS the image itself
                 if (!imgEl) {
                     const el = item.querySelector('.PQoZYCec');
                     if (el && el.tagName === 'IMG') imgEl = el;
                 }
 
-                const textEl = item.querySelector('.RITrraU3');
+                // Name is specifically in .U63Kdv8C
+                const textEl = item.querySelector('.U63Kdv8C');
+                // Price is specifically in .nvN5jV0G span
+                const priceSpan = item.querySelector('.nvN5jV0G span') || item.querySelector('.nvN5jV0G');
+                
                 const thumbnail = imgEl ? imgEl.src : '';
                 const rawText = textEl ? textEl.innerText.trim() : '';
                 let price = 0;
+                let cnyPrice = 0;
                 let colorName = rawText;
 
-                // 1. Extract Price (Improved Logic)
-                const priceRegex = /(?:¥|￥)\s*(\d+(?:\.\d+)?)/;
-                const priceMatch = rawText.match(priceRegex);
+                // 1. Extract Price (Prioritize .nvN5jV0G)
+                if (priceSpan) {
+                    const priceText = priceSpan.innerText.trim().replace(/[¥￥\s]/g, '');
+                    const parsedPrice = parseFloat(priceText);
+                    if (!isNaN(parsedPrice)) {
+                        cnyPrice = parsedPrice;
+                        // IQD Conversion: 200 IQD/CNY (Raw IQD, no profit margin yet)
+                        const rawIqd = parsedPrice * 200;
+                        price = rawIqd;
+                        console.log(`[DEBUG-Browser] Extracted Option Price: CNY ${parsedPrice} -> Raw IQD ${rawIqd}`);
+                    }
+                }
                 
-                if (priceMatch) {
-                     price = parseFloat(priceMatch[1]) * 200; // IQD Conversion
-                } else {
-                    // Fallback: Last number in text, ignoring "sold" counts
-                    // Remove "已拼xxx件" or "Sold xxx" patterns to avoid parsing sold count as price
-                    let cleanText = rawText.replace(/已拼\s*[\d.]+\s*[万+]?件/g, ''); 
-                    cleanText = cleanText.replace(/[\d.]+\s*sold/ig, '');
+                // Fallback Price Logic if first attempt failed
+                if (price === 0) {
+                    const priceElFallback = item.querySelector('.RITrraU3') || item.querySelector('.O8fR8K8O');
+                    const rawPriceText = priceElFallback ? priceElFallback.innerText.trim() : rawText;
+
+                    const priceRegex = /(?:¥|￥)\s*(\d+(?:\.\d+)?)/;
+                    const priceMatch = rawPriceText.match(priceRegex);
                     
-                    const allNumbers = cleanText.match(/[\d.]+/g);
-                    if (allNumbers && allNumbers.length > 0) {
-                        price = parseFloat(allNumbers[allNumbers.length - 1]) * 200; 
+                    if (priceMatch) {
+                         const rawCny = parseFloat(priceMatch[1]);
+                         cnyPrice = rawCny;
+                         // IQD Conversion: 200 IQD/CNY
+                         const rawIqd = rawCny * 200;
+                         price = rawIqd;
+                         console.log(`[DEBUG-Browser] Extracted Fallback Price (Regex): CNY ${rawCny} -> Raw IQD ${rawIqd}`);
+                    } else {
+                        let cleanText = rawPriceText.replace(/已拼\s*[\d.]+\s*[万+]?件/g, ''); 
+                        cleanText = cleanText.replace(/[\d.]+\s*sold/ig, '');
+                        const allNumbers = cleanText.match(/[\d.]+/g);
+                        if (allNumbers && allNumbers.length > 0) {
+                            const rawCny = parseFloat(allNumbers[allNumbers.length - 1]);
+                            cnyPrice = rawCny;
+                            // IQD Conversion: 200 IQD/CNY
+                            const rawIqd = rawCny * 200;
+                            price = rawIqd;
+                            console.log(`[DEBUG-Browser] Extracted Fallback Price (Numbers): CNY ${rawCny} -> Raw IQD ${rawIqd}`);
+                        }
                     }
                 }
 
@@ -1421,28 +1724,43 @@ async function scrapeProduct(page, url) {
                 }
 
                 // Remove the price from the end of the string if it exists
-                // The price usually appears as a number at the end, sometimes preceded by a hyphen
-                // Example: "Color Name - 10.5" or "Color Name 10.5"
-                
-                // Regex to match trailing number (integer or decimal) potentially preceded by space or hyphen
-                // This removes " - 1.2" or " 1.2" from "Name - 1.2"
                 colorName = colorName.replace(/[-]?\s*[\d.]+$/, '').trim();
 
                 // Normalize spaces
                 colorName = colorName.replace(/\s+/g, ' ').trim();
 
+                // FILTER: Ignore options that are just single English letters or numbers or garbage
+                // But ALLOW single Chinese characters like "白" (White), "黑" (Black)
+                const hasChinese = /[\u4e00-\u9fa5]/.test(colorName);
+                
+                if (colorName.length <= 1 && !hasChinese) {
+                    console.log(`[DEBUG] Skipping invalid non-Chinese short option: "${colorName}"`);
+                    return;
+                }
+                
+                // If it's a single Chinese character, it's likely a valid color (White, Black, etc.)
+                // But if it's NO characters (empty), skip
+                if (!colorName || colorName.length === 0) return;
+
+                // DEDUPLICATE: Skip if this color name already exists in our list
+                if (options.some(o => o.color === colorName)) {
+                    console.log(`[DEBUG-Browser] Skipping duplicate option: "${colorName}"`);
+                    return;
+                }
+
                 options.push({
                     color: colorName,
                     sizes: [],
                     price: price,
+                    cnyPrice: cnyPrice,
                     thumbnail: thumbnail
                 });
             });
             return options;
         });
 
-        console.log(`[DEBUG] Collected ${generated_options.length} options from .TpUpcNRp`);
-
+        console.log(`✅ Collected ${generated_options.length} options`);
+        
         // Step 4: Close Options (Tap Top Part)
         const xTop = vw * 0.5;
         const yTop = vh * 0.1; // Very top (10% height)
@@ -1758,65 +2076,93 @@ async function scrapeProduct(page, url) {
 
         // --- 7. AI Translation & Processing ---
         console.log('--- Processing Data with AI (Translation & Metadata) ---');
+        console.time('AI Processing Total');
         
         // Slice arrays
         const limitedReviews = scrapedReviews.slice(0, 8);
         const limitedOptions = generated_options.slice(0, 30);
         
-        // Translate Name & Description
-        console.log('Translating product name and description...');
-        const translatedName = await translateText(basicData.product_name, 'product_name', basicData.descriptionText);
+        // Prepare Parallel Tasks
+        console.log('Starting parallel AI tasks (Name, Description, Options, Reviews)...');
+        console.time('Parallel AI Tasks');
+
+        const nameTask = translateText(basicData.product_name, 'product_name', basicData.descriptionText, MODEL_12B);
+        const descriptionTask = formatDescriptionToKV(basicData.descriptionText);
+        const optionsTask = batchTranslate(limitedOptions.map(opt => opt.color), 'option', MODEL_4B, MODEL_12B);
+        const reviewsTask = batchTranslate(limitedReviews.map(rev => rev.comment), 'review', MODEL_4B, MODEL_12B);
+
+        // Execute all in parallel
+        const [translatedName, descriptionKV, translatedOptionNames, translatedReviewComments] = await Promise.all([
+            nameTask,
+            descriptionTask,
+            optionsTask,
+            reviewsTask
+        ]);
+
+        console.timeEnd('Parallel AI Tasks');
         
-        // Format description as KV pairs (implicitly translated via prompt)
-        console.log('Formatting description to Key-Value pairs...');
-        const descriptionKV = await formatDescriptionToKV(basicData.descriptionText);
-        
-        // Translate Options
-        console.log(`Translating ${limitedOptions.length} options...`);
-        const translatedOptions = await Promise.all(limitedOptions.map(async (opt) => {
-            const translatedColor = await translateText(opt.color, 'option');
-            // Remove skuId and ensure clean object
+        // Map translated options
+        const translatedOptions = limitedOptions.map((opt, idx) => {
             const { skuId, ...rest } = opt;
+            let translatedName = translatedOptionNames[idx] || opt.color;
+            
+            // CLEANUP: If translation is a single Arabic character but input was longer, it's likely a fragment/bad translation
+            const isSingleArabicChar = translatedName.length === 1 && /[\u0600-\u06FF]/.test(translatedName);
+            const wasSingleChar = opt.color.length === 1;
+            
+            if (isSingleArabicChar && !wasSingleChar) {
+                console.log(`[DEBUG] Discarding single-character Arabic translation fragment: "${translatedName}" for input "${opt.color}"`);
+                return null;
+            }
+            
+            // Also discard if the translation is empty or just whitespace
+            if (!translatedName || !translatedName.trim()) return null;
+
             return {
                 ...rest,
-                color: translatedColor,
-                // Assuming price and other fields don't need translation or are numeric
+                color: translatedName
             };
-        }));
+        }).filter(opt => opt !== null);
         
-        // Translate Reviews & Clean Up
-        console.log(`Translating ${limitedReviews.length} reviews...`);
-        const translatedReviews = await Promise.all(limitedReviews.map(async (rev) => {
-            const translatedComment = await translateText(rev.comment);
-            return {
-                name: rev.name,
-                photos: rev.photos,
-                comment: translatedComment
-            };
+        console.log(`✅ Translation complete: ${translatedOptions.length} options ready`);
+        
+        // Map translated reviews
+        const translatedReviews = limitedReviews.map((rev, idx) => ({
+            name: rev.name,
+            photos: rev.photos,
+            comment: translatedReviewComments[idx] || rev.comment
         }));
 
-        // Generate Metadata
-        console.log('Generating AI Metadata...');
+        // Generate Metadata (Depends on translatedName, so runs after parallel block)
+        console.log('Generating AI Metadata using 12B...');
+        console.time('Metadata Generation');
         const aiMetadata = await generateAiMetadata(translatedName, basicData.descriptionText);
+        console.timeEnd('Metadata Generation');
+        
+        console.timeEnd('AI Processing Total');
+        console.log('Metadata generation complete.');
 
         // 4. Construct Final Object
+        const finalGeneralPrice = (() => {
+            // Priority 1: Main Page Price (converted to raw IQD)
+            if (basicData.mainPagePrice && basicData.mainPagePrice > 0) {
+                 return basicData.mainPagePrice * 200;
+            }
+            
+            // Priority 2: Min of Options (which are already raw IQD now)
+            const validPrices = translatedOptions.map(o => o.price).filter(p => p > 0);
+            return validPrices.length > 0 ? Math.min(...validPrices) : 0;
+        })();
+
+        console.log(`💰 Final Product Price: ${finalGeneralPrice} IQD`);
+
         const finalData = {
             product_name: translatedName,
             main_images: basicData.main_images,
             url: url,
             product_details: descriptionKV, // Key-Value formatted description
             product_desc_imgs: productDescImgs,
-            general_price: (() => {
-                // Priority 1: Main Page Price (converted to IQD)
-                // The home page price is usually the most accurate "displayed" price
-                if (basicData.mainPagePrice && basicData.mainPagePrice > 0) {
-                     return basicData.mainPagePrice * 200;
-                }
-                
-                // Priority 2: Min of Options
-                const validPrices = translatedOptions.map(o => o.price).filter(p => p > 0);
-                return validPrices.length > 0 ? Math.min(...validPrices) : 0;
-            })(),
+            general_price: finalGeneralPrice,
             generated_options: translatedOptions,
             scrapedReviews: translatedReviews,
             aiMetadata: aiMetadata
@@ -1891,6 +2237,9 @@ async function scrapeProduct(page, url) {
         console.log('Creating new page...');
         page = await browser.newPage();
     }
+
+    // Load cookies for the initial session
+    await loadCookies(page);
 
     // --- 2. LOGIN DELAY (DESKTOP MODE) ---
     console.log('⏳ 30 SECONDS LOGIN DELAY (Please Login if needed)...');
@@ -1988,6 +2337,9 @@ async function scrapeProduct(page, url) {
     page.on('console', msg => {
         const text = msg.text();
         if (!text.includes('ERR_BLOCKED_BY_CLIENT')) {
+            if (text.includes('[DEBUG-Browser]')) {
+                console.log(text);
+            }
             // console.log(`[Browser Console] ${msg.type().toUpperCase()}: ${text}`);
         }
     });
@@ -2012,6 +2364,13 @@ async function scrapeProduct(page, url) {
         try {
             if (frame.parentFrame()) return;
             const url = frame.url();
+            
+            // Check for Captcha/Verification pages
+            if (url.includes('verification') || url.includes('punish') || url.includes('captcha')) {
+                console.log(`⚠️ [SECURITY-CHECK] Captcha/Verification detected: ${url}`);
+                hasPageError = true;
+            }
+
             if (isProductUrl(url)) {
                 const normalized = normalizeProductUrl(url);
                 lastProductUrl = normalized;
@@ -2061,7 +2420,7 @@ async function scrapeProduct(page, url) {
     console.log('Starting Scrape Loop (Quadrant-Based)...');
 
     // --- MAIN LOOP ---
-    const PRODUCT_LIMIT = 60; // User requested limit
+    const PRODUCT_LIMIT = 45; // Max products to scrape
     let productsScrapedCount = 0;
     let consecutiveFailures = 0;
     let productIndex = 0; 
@@ -2084,6 +2443,13 @@ async function scrapeProduct(page, url) {
 
     while (isRunning) {
         try {
+            // Check for 403/424 or Captcha errors before each product
+            if (hasPageError) {
+                console.log('⚠️ Page error detected (403/424). Rotating cookies...');
+                await rotateCookies(page);
+                continue; // Restart the loop after rotation
+            }
+
             // 1. Ensure we are on Category Page (or go back if stuck)
             if (isProductUrl(page.url())) {
                 console.log('Unexpectedly on Product Page. Going back...');

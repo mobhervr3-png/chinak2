@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { fetchCart, updateCartItem, removeFromCart, addToCart, fetchSettings } from '../services/api';
-import { calculateInclusivePrice } from '../utils/shipping';
 import type { ShippingRates } from '../types/shipping';
 import type { Product } from '../types/product';
 
@@ -340,18 +339,28 @@ export const useCartStore = create<CartState>()(
         const items = method ? allItems.filter(i => i.shippingMethod === method) : allItems;
         return items.reduce((acc, item) => {
           const basePrice = item.variant?.price || item.product.price || 0;
-          const currentPrice = calculateInclusivePrice(
-            basePrice,
-            item.product.domesticShippingFee || 0,
-            item.variant?.basePriceIQD ?? item.product.basePriceIQD,
-            rates
-          );
-          return acc + (currentPrice * item.quantity);
+          
+          // Agent Logic: Add Service Fee (e.g. 5%) or fixed fee if needed?
+          // For now, just raw price.
+          
+          return acc + (basePrice * item.quantity);
         }, 0);
       },
 
-      getShippingTotal: () => {
-        return 0; // International shipping is now free
+      getShippingTotal: (method) => {
+        // Agent Logic: Calculate estimated international shipping
+        const { items: allItems, rates } = get();
+        const items = method ? allItems.filter(i => i.shippingMethod === method) : allItems;
+        
+        return items.reduce((total, item) => {
+          // If it's an Agent product (has provider), we charge shipping separately
+          if (item.product.provider) {
+             const weight = item.variant?.weight || item.product.weight || 0.5; // Default 0.5kg
+             const rate = item.shippingMethod === 'air' ? rates.airRate : rates.seaRate;
+             return total + (weight * rate * item.quantity);
+          }
+          return total; // Standard products have free shipping (included in price)
+        }, 0);
       },
 
       getSubtotal: (method) => {

@@ -1,4 +1,6 @@
-export const categoriesPart1 = [ 
+import type { Category } from '../types/category';
+
+export const categoriesPart1: Category[] = [ 
      { 
        "id": 1000, 
        "name_en": "Women's Fashion", 

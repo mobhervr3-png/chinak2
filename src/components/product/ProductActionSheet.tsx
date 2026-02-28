@@ -52,6 +52,19 @@ const ProductActionSheet: React.FC<ProductActionSheetProps> = ({
     if (!isOpen) setIsZoomed(false);
   }, [isOpen]);
 
+  // Handle body scroll lock
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   const selectedImage = currentVariant?.image || product?.image;
 
   return (
@@ -92,14 +105,14 @@ const ProductActionSheet: React.FC<ProductActionSheetProps> = ({
                 </div>
               </div>
 
-              <div className="flex-1 pt-1">
+              <div className="flex-1 pt-1 min-w-0">
                 <div className="flex items-start justify-between">
-                  <h3 className="text-xl font-black text-primary">
+                  <h3 className="text-xl font-black text-primary truncate">
                     {price > 0 ? `${price.toLocaleString()} د.ع` : 'السعر عند الطلب'}
                   </h3>
                   <button 
                     onClick={onClose}
-                    className="p-2 -mr-2 -mt-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                    className="p-2 -mr-2 -mt-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors shrink-0"
                   >
                     <X size={24} />
                   </button>
@@ -108,9 +121,11 @@ const ProductActionSheet: React.FC<ProductActionSheetProps> = ({
                   {fixMojibake(product?.name)}
                 </p>
                 {currentVariant && (
-                  <p className="text-xs font-bold text-slate-400 mt-2">
-                    المحدد: {Object.values(selectedOptions).map(v => fixMojibake(v)).join(' / ')}
-                  </p>
+                  <div className="mt-2">
+                    <p className="text-xs font-bold text-slate-400 leading-normal">
+                      المحدد: {Object.values(selectedOptions).map(v => fixMojibake(v)).join(' / ')}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

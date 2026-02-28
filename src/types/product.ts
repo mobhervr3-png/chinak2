@@ -31,4 +31,7 @@ export interface Product {
   description?: string;
   chineseName?: string;
   detailImages?: string[];
+  provider?: string;
+  sellerName?: string;
+  originalUrl?: string;
 }

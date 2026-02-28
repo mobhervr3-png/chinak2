@@ -1,0 +1,6 @@
+node_modules
+.env
+*.bat
+*.png
+debug-direct.png
+cookies.json

@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# NEW BUILD TRIGGER: 2026-02-26-v6-EMERGENCY-RESET
+# BUILD TRIGGER: 2026-02-27-RENDER-DEPLOY
 WORKDIR /app
 
 # Install openssl for Prisma
@@ -24,10 +24,11 @@ COPY server/ .
 # Generate Prisma client during build phase
 RUN npx prisma generate
 
-# Hugging Face Spaces environment
-ENV PORT=7860
+# Standard production environment
 ENV NODE_ENV=production
-EXPOSE 7860
+# Render will automatically provide PORT, but we default to 10000
+ENV PORT=10000
+EXPOSE 10000
 
-# Start the server (fast startup)
+# Start the server
 CMD ["node", "index.js"]

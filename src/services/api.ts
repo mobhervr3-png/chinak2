@@ -28,8 +28,8 @@ export const getBaseDomain = () => {
     const isAndroid = /android/i.test(userAgent);
     
     // Check if we are actually on the production domain or if it's a capacitor app that should connect to prod
-    if (hostname.includes('shanshal66') || hostname.includes('hf.space') || (isCapacitor && !hostname.includes('10.0.2.2') && !hostname.includes('10.0.3.2'))) {
-      return 'https://shanshal66-my-shop-backend.hf.space';
+    if (hostname.includes('shanshal66') || hostname.includes('hf.space') || hostname.includes('onrender.com') || (isCapacitor && !hostname.includes('10.0.2.2') && !hostname.includes('10.0.3.2'))) {
+      return 'https://chinak.onrender.com';
     }
 
     // If we are in PROD build but running on emulator (10.0.2.2), allow local connection
@@ -37,7 +37,7 @@ export const getBaseDomain = () => {
       return 'http://10.0.2.2:5001';
     }
     
-    return 'https://shanshal66-my-shop-backend.hf.space';
+    return 'https://chinak.onrender.com';
   }
 
   // 3. Mobile / Emulator Check (For development)
@@ -61,10 +61,10 @@ export const getBaseDomain = () => {
 
   // 4. Default local development (Browser)
   if (isLocalHost) {
-    return '';
+    return 'http://localhost:7860'; // Backend is running on port 7860
   }
 
-  return 'https://shanshal66-my-shop-backend.hf.space';
+  return 'https://chinak.onrender.com';
 };
 
 const API_BASE_URL = `${getBaseDomain()}/api`;
@@ -1147,7 +1147,19 @@ export async function fetchCoupons() {
   return request('/coupons', { skipMaintenanceTrigger: true });
 }
 
-// --- Review functions ---
+export const api = {
+  post: async (endpoint: string, body: any) => {
+    return request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(data => ({ data }));
+  },
+  get: async (endpoint: string) => {
+    return request(endpoint, {
+      method: 'GET',
+    }).then(data => ({ data }));
+  }
+};
 export async function fetchProductReviews(productId: number | string) {
   return request(`/products/${productId}/reviews`);
 }

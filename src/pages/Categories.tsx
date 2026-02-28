@@ -31,18 +31,12 @@ const iconMapping: Record<string, string> = {
   'sunglasses': 'sunglasses',
   'socks': 'shoe-print', // MDI doesn't have socks
   'shirt': 'tshirt-crew', // MDI doesn't have shirt
-  'belt': 'hanger', // Fallback to hanger as preferred by user
-  'hat-fedora': 'hat-fedora',
-  'tie': 'tie',
-  'briefcase': 'briefcase',
   'belt': 'belt',
   'phone-case': 'cellphone-screenshot',
   'tablet': 'tablet-android',
   'home-lighting': 'home-lighting',
   'earring': 'earring',
   'jewelry-box': 'dresser-outline',
-  'handbag': 'purse',
-  'backpack': 'bag-personal',
   'pillow': 'bed-outline',
   'face-mask-outline': 'face-mask-outline',
   'face-mask': 'face-man-profile',
@@ -151,77 +145,45 @@ const iconMapping: Record<string, string> = {
   'power-socket-eu': 'power-socket',
   'format-paint': 'format-paint',
   'ring': 'ring',
-  'necklace': 'necklace',
-  'watch': 'watch',
   'earring-variant': 'earring-variant',
-
-  // Bags & Luggage
   'briefcase': 'briefcase-outline',
-  'suitcase': 'briefcase', // Using standard briefcase as suitcase might be missing
-  'bag-personal': 'bag-personal',
-
-  // Smart Home
+  'suitcase': 'briefcase', 
   'home-automation': 'home-automation',
   'cctv': 'camera-control',
   'lock-smart': 'lock-smart',
   'bell-ring': 'bell-ring',
-
-  // Photography
   'video': 'video-outline',
   'microphone': 'microphone-variant',
   'white-balance-sunny': 'white-balance-sunny',
-
-  // Party
   'party-popper': 'party-popper',
   'balloon': 'balloon',
   'cake-variant': 'cake-variant',
-
-  // Sewing
   'needle': 'needle',
-  'sewing-machine': 'scissors-cutting', // Using scissors as a more relevant fallback for sewing
-  'scissors-cutting': 'content-cut',
-
-  // Gaming
   'controller': 'controller-classic-outline',
   'mouse': 'mouse-variant',
   'led-strip-variant': 'led-strip',
-
-  // Sub-category Additions Icons
   'tooth-outline': 'tooth-outline',
-  'hair-dryer': 'hair-dryer',
-  'watch-variant': 'watch-variant',
   'shower': 'shower',
   'dresser': 'dresser',
   'mask': 'face-mask-outline',
-  'shield-check': 'shield-check',
   'yoga': 'yoga',
   'spade': 'spade',
   'faucet': 'faucet',
   'archive': 'archive',
-
-  // Sports
   'dumbbell': 'dumbbell',
   'run': 'run',
-  'swim': 'pool',
   'basketball': 'basketball',
   'bike': 'bicycle',
   'tent': 'tent',
-  'bottle-water': 'cup-water', // Fix for reported issue
-
-  // Toys
+  'bottle-water': 'cup-water',
   'robot': 'robot',
   'film': 'filmstrip',
   'layers': 'layers',
   'cube': 'cube-outline',
-  'model-text': 'toy-brick', // Fix for reported issue
+  'model-text': 'toy-brick',
   'remote': 'remote',
-
-  // Automotive
   'car': 'car',
   'car-seat': 'car-seat',
-  'spray': 'spray-bottle',
-
-  // Fallbacks
   'box': 'package-variant',
   'gift': 'gift-outline',
 };

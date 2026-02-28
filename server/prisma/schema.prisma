@@ -4,8 +4,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -37,8 +38,33 @@ model User {
   wishlist             WishlistItem[]
   interactions         UserInteraction[]
   searchHistory        SearchHistory[]
+  wallet               Wallet?
+  transactions         Transaction[]
 
   @@index([name])
+}
+
+model Wallet {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  balance   Float    @default(0)
+  currency  String   @default("IQD")
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  amount      Float
+  type        String   // DEPOSIT, WITHDRAW, PAYMENT, REFUND
+  status      String   @default("PENDING")
+  referenceId String?
+  description String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model UserInteraction {
@@ -88,6 +114,11 @@ model Product {
   basePriceIQD      Float?
   image             String
   purchaseUrl       String?
+  originalUrl       String?                // Agent: The original Taobao/PDD link
+  provider          String?                // Agent: TAOBAO, PDD, 1688
+  sellerName        String?                // Agent: Store name
+  originalPrice     Float?                 // Agent: Price in CNY
+  skuId             String?                // Agent: SKU ID from provider
   status            String                 @default("PUBLISHED")
   isFeatured        Boolean                @default(false)
   isActive          Boolean                @default(true)
@@ -95,8 +126,8 @@ model Product {
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
   aiMetadata        Json?
-  scrapedReviews    Json?                  // New field for scraped reviews
-  generated_options Json?                  // New field for generated options
+  scrapedReviews    Json?
+  generated_options Json?
   embedding         Unsupported("vector")?
   domesticShippingFee Float?
   isAirRestricted   Boolean                @default(false)
@@ -175,11 +206,11 @@ model CartItem {
   productId       Int
   variantId       Int?
   quantity        Int             @default(1)
-  price           Float?          // Inclusive price (base + shipping)
+  price           Float?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   selectedOptions String?
-  shippingMethod  String          @default("air") // 'air' or 'sea'
+  shippingMethod  String          @default("air")
   product         Product         @relation(fields: [productId], references: [id])
   user            User            @relation(fields: [userId], references: [id])
   variant         ProductVariant? @relation(fields: [variantId], references: [id])
@@ -260,7 +291,12 @@ model Order {
   addressId                Int
   total                    Float
   discountAmount           Float       @default(0)
-  status                   String      @default("PENDING")
+  status                   String      @default("PENDING_PAYMENT")
+  warehouseStatus          String?     // PENDING, ARRIVED, SHIPPED
+  domesticTrackingNumber   String?
+  internationalTrackingNumber String?
+  totalWeight              Float?
+  serviceFee               Float?      @default(0)
   internalNote             String?
   shippingMethod           String      @default("air")
   paymentMethod            String      @default("zain_cash")
@@ -328,10 +364,16 @@ model OrderItem {
   quantity        Int
   price           Float
   selectedOptions String?
+  status          String?         // PENDING, PURCHASED, ARRIVED_WAREHOUSE, QC_COMPLETED
+  qcPhotos        String[]        @default([])
+  remark          String?
+  originalPrice   Float?          // CNY
+  exchangeRate    Float?
+  weight          Float?
   order           Order           @relation(fields: [orderId], references: [id])
   product         Product         @relation(fields: [productId], references: [id])
   variant         ProductVariant? @relation(fields: [variantId], references: [id])
-  shippingMethod  String          @default("air") // 'air' or 'sea'
+  shippingMethod  String          @default("air")
 }
 
 model WishlistItem {

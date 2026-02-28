@@ -40,11 +40,9 @@ export const useUserPreferencesStore = create<UserPreferencesState>()(
         const newScores = { ...categoryScores };
         const lowerTerm = term.toLowerCase();
         
-        let matched = false;
         Object.entries(categoryKeywords).forEach(([catId, keywords]) => {
           if (keywords.some(k => lowerTerm.includes(k.toLowerCase()))) {
             newScores[catId] = (newScores[catId] || 0) + 5; // Big boost for explicit search
-            matched = true;
           }
         });
 

@@ -67,8 +67,8 @@ export async function calculateOrderShipping(items, defaultMethod = 'SEA') {
       // International shipping is now free for all methods as per request
       itemShipping = 0;
 
-      // Round per item to match home page logic (250 IQD rounding)
-      const roundedItemShipping = Math.ceil(itemShipping / 250) * 250;
+      // Round per item to match home page logic (10 IQD rounding)
+      const roundedItemShipping = Math.ceil(itemShipping / 10) * 10;
       totalActualShipping += roundedItemShipping * qty;
     }
 
@@ -142,7 +142,7 @@ export async function calculateProductShipping(product, method = 'SEA', applyMin
     actualCost = 0;
 
     // As per user request: always add money of delivery
-    const roundedShipping = Math.ceil(actualCost / 250) * 250;
+    const roundedShipping = Math.ceil(actualCost / 10) * 10;
     
     return roundedShipping;
   } catch (error) {

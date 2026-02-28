@@ -95,11 +95,7 @@ const SearchProductCard: React.FC<SearchProductCardProps> = React.memo(({
             fill={isWishlisted ? "currentColor" : "none"} 
           />
         </button>
-        {totalPrice < 30000 && (
-          <div className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-red-500 text-white text-[10px] font-bold">
-            وفر 20%
-          </div>
-        )}
+        {/* Removed "وفر 20%" discount badge as requested */}
       </div>
       <div className="p-3">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight mb-2 line-clamp-2 min-h-[2.5em]">
@@ -113,7 +109,6 @@ const SearchProductCard: React.FC<SearchProductCardProps> = React.memo(({
         <div className="flex items-center">
           <div className="flex flex-col">
             <span className="text-base font-bold text-primary">{totalPrice.toLocaleString()} د.ع</span>
-            <span className="text-[10px] text-slate-400 line-through">{(totalPrice * 1.2).toLocaleString()} د.ع</span>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import LazyImage from '../LazyImage';
-import { CheckCircle2, Star, X, ImageIcon, MessageCircle } from 'lucide-react';
+import { CheckCircle2, Star, X, ImageIcon, MessageCircle, Maximize2 } from 'lucide-react';
 
 interface Review {
   id: number;
@@ -44,6 +45,19 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isAllReviewsModalOpen, setIsAllReviewsModalOpen] = useState(false);
   const [isAllCommentsModalOpen, setIsAllCommentsModalOpen] = useState(false);
+  
+  // Handle body scroll lock
+  useEffect(() => {
+    if (selectedImage || isAllReviewsModalOpen || isAllCommentsModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedImage, isAllReviewsModalOpen, isAllCommentsModalOpen]);
   
   const hasRealReviews = reviews.length > 0 || (reviewSummary && (
     (reviewSummary.tags && reviewSummary.tags.length > 0) ||
@@ -252,8 +266,8 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({
       )}
 
       {/* All Reviews Modal */}
-      {isAllReviewsModalOpen && (
-        <div className="fixed inset-0 z-[110] bg-slate-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setIsAllReviewsModalOpen(false)}>
+      {isAllReviewsModalOpen && createPortal(
+        <div className="fixed inset-0 z-[150] bg-slate-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setIsAllReviewsModalOpen(false)}>
           <div 
             className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[85vh] rounded-[32px] overflow-hidden flex flex-col shadow-xl animate-in slide-in-from-bottom-10 duration-500 border border-slate-100 dark:border-white/5"
             onClick={(e) => e.stopPropagation()}
@@ -281,10 +295,11 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-      {isAllCommentsModalOpen && (
-        <div className="fixed inset-0 z-[110] bg-slate-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setIsAllCommentsModalOpen(false)}>
+      {isAllCommentsModalOpen && createPortal(
+        <div className="fixed inset-0 z-[150] bg-slate-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setIsAllCommentsModalOpen(false)}>
           <div 
             className="bg-white dark:bg-slate-900 w-full max-w-4xl h-[80vh] rounded-[32px] overflow-hidden flex flex-col shadow-xl animate-in slide-in-from-bottom-10 duration-500 border border-slate-100 dark:border-white/5"
             onClick={(e) => e.stopPropagation()}
@@ -320,41 +335,56 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Image Zoom Modal */}
-      {selectedImage && (
+      {selectedImage && createPortal(
         <div 
-          className="fixed inset-0 z-[120] bg-slate-950/98 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-in fade-in duration-300"
+          className="fixed inset-0 z-[200] bg-slate-950/98 backdrop-blur-2xl flex flex-col items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300"
           onClick={() => setSelectedImage(null)}
         >
+          {/* Top close button - adjusted for safe areas */}
           <button 
-            className="absolute top-12 right-8 size-14 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all hover:rotate-90 active:scale-90"
-            onClick={() => setSelectedImage(null)}
+            className="absolute top-[calc(1.5rem+env(safe-area-inset-top))] right-6 size-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all hover:rotate-90 active:scale-90 z-[210]"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedImage(null);
+            }}
           >
-            <X size={32} />
+            <X size={28} />
           </button>
           
-          <div className="relative w-full max-w-7xl h-[75vh] flex items-center justify-center">
+          <div className="relative w-full max-w-7xl h-full max-h-[70vh] flex items-center justify-center">
             <LazyImage 
               src={selectedImage} 
               alt="Zoomed review" 
-              className="max-w-full max-h-full object-contain rounded-[40px] shadow-2xl animate-in zoom-in-95 duration-500 border-4 border-white/10"
+              className="max-w-full max-h-full object-contain rounded-[20px] sm:rounded-[40px] shadow-2xl animate-in zoom-in-95 duration-500 border-2 sm:border-4 border-white/10"
               isThumbnail={false}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
             />
           </div>
           
-          <div className="mt-8 flex gap-4 animate-in slide-in-from-bottom-4 duration-700">
+          {/* Bottom actions - positioned well above bottom nav */}
+          <div className="mt-12 flex flex-col items-center gap-6 animate-in slide-in-from-bottom-4 duration-700">
             <button 
-              onClick={() => setSelectedImage(null)}
-              className="bg-white text-slate-900 px-10 py-4 rounded-full text-sm font-black shadow-xl hover:scale-105 active:scale-95 transition-all"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedImage(null);
+              }}
+              className="bg-white text-slate-900 px-12 py-4 rounded-full text-sm font-black shadow-[0_10px_40px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
             >
-              إغلاق المعاينة
+              <span>إغلاق المعاينة</span>
+              <X size={16} />
             </button>
+            
+            <p className="text-white/40 text-xs font-medium tracking-wide uppercase">
+              انقر في أي مكان للإغلاق
+            </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -1,4 +1,10 @@
-export const categoriesPart4 = {
+import type { Category } from '../types/category';
+
+export const categoriesPart4: {
+  childrenOf6002: Category[];
+  siblingsOf6002: Category[];
+  newTopLevelCategories: Category[];
+} = {
   // Continuation of children for Category 6002 (Baby Care & Liquids) from Part 3
   childrenOf6002: [
     { "id": 600201, "name_en": "Diapers", "name_ar": "حفاضات", "icon": "ticket" }, 

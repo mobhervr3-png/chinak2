@@ -1,7 +1,7 @@
 import prisma from '../prismaClient.js';
 
 async function updatePrices() {
-  console.log('Starting price update: Recalculating all prices with 15% profit...');
+  console.log('Starting price update: Recalculating all prices (0% profit, rounded to 10)...');
   
   try {
     const products = await prisma.product.findMany({
@@ -17,11 +17,11 @@ async function updatePrices() {
     let updatedCount = 0;
 
     for (const product of products) {
-      // Logic: (BaseIQD + Domestic) * 1.15 -> Rounded to 250
+      // Logic: (BaseIQD + Domestic) * 1.0 -> Rounded to 10
       const base = product.basePriceIQD || product.price; // Fallback to current price if base is missing
       const domestic = product.domesticShippingFee || 0;
       
-      const newPrice = Math.ceil(((base + domestic) * 1.15) / 250) * 250;
+      const newPrice = Math.ceil((base + domestic) / 10) * 10;
       
       await prisma.product.update({
         where: { id: product.id },
@@ -48,7 +48,7 @@ async function updatePrices() {
       // If we need domestic fee, we'd need to fetch product relation. 
       // For now, assuming basePriceIQD on variant is the full cost basis.
       
-      const newPrice = Math.ceil((base * 1.15) / 250) * 250;
+      const newPrice = Math.ceil(base / 10) * 10;
       
       await prisma.productVariant.update({
         where: { id: variant.id },

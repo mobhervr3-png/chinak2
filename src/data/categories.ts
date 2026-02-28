@@ -1,3 +1,4 @@
+import type { Category } from '../types/category';
 import { categoriesPart1 } from './categoriesPart1';
 import { categoriesPart2 } from './categoriesPart2';
 import { categoriesPart3 } from './categoriesPart3';
@@ -12,7 +13,7 @@ import { categoriesPart8Additions } from './categoriesPart8';
 // We will build the final array sequentially.
 
 // 1. Start with Part 1 (Categories 1000, 2000)
-const finalCategories = [...categoriesPart1];
+const finalCategories: Category[] = [...categoriesPart1];
 
 // 2. Add Part 2 (Categories 3000, 4000)
 // Note: Category 4000 (Home & Living) is here but incomplete (only has 4001, 4002)
@@ -76,7 +77,7 @@ finalCategories.push(...categoriesPart7);
 // 8. Add Sub-category Additions from Part 8
 categoriesPart8Additions.forEach(addition => {
   // Find parent category (could be main category or sub-category group)
-  const findAndAdd = (nodes: any[]) => {
+  const findAndAdd = (nodes: Category[]) => {
     for (let node of nodes) {
       if (node.id === addition.parentId) {
         if (addition.items) {
@@ -95,4 +96,5 @@ categoriesPart8Additions.forEach(addition => {
   findAndAdd(finalCategories);
 });
 
-export const categories = finalCategories;
+export const categories: Category[] = finalCategories;
+

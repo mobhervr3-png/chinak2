@@ -43,7 +43,6 @@ const AddAddress = lazy(() => import('./pages/AddAddress'));
 const EditAddress = lazy(() => import('./pages/EditAddress'));
 const ChatList = lazy(() => import('./pages/ChatList'));
 const Chat = lazy(() => import('./pages/Chat'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const FAQ = lazy(() => import('./pages/FAQ'));
 const AboutUs = lazy(() => import('./pages/AboutUs'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
@@ -54,6 +53,7 @@ const DeleteAccountConfirm = lazy(() => import('./pages/DeleteAccountConfirm'));
 const ContactUs = lazy(() => import('./pages/ContactUs'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService'));
+const AgentProductLoading = lazy(() => import('./pages/AgentProductLoading'));
 
 import { performCacheMaintenance } from './services/api';
 
@@ -178,7 +178,9 @@ function AdminRoutes() {
             path="/*" 
             element={
               <ProtectedRoute requireAdmin={true}>
-                <AdminDashboard />
+                <div className="p-8 text-center text-gray-500">
+                  Dashboard under construction
+                </div>
               </ProtectedRoute>
             } 
           />
@@ -225,12 +227,12 @@ function AnimatedRoutes() {
             <PageTransition><CheckoutShipping /></PageTransition>
           </ProtectedRoute>
         } />
-        <Route path="/checkout/payment-address" element={
+        <Route path="/checkout/payment" element={
           <ProtectedRoute>
             <PageTransition><CheckoutPaymentAddress /></PageTransition>
           </ProtectedRoute>
         } />
-        <Route path="/order-confirmation" element={
+        <Route path="/order-confirmation/:id" element={
           <ProtectedRoute>
             <PageTransition><OrderConfirmation /></PageTransition>
           </ProtectedRoute>
@@ -259,6 +261,7 @@ function AnimatedRoutes() {
         <Route path="/contact-us" element={<ContactUs />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms-of-service" element={<TermsOfService />} />
+        <Route path="/agent/product" element={<PageTransition><AgentProductLoading /></PageTransition>} />
         <Route path="/chats" element={
           <ProtectedRoute>
             <PageTransition><ChatList /></PageTransition>
