@@ -51,16 +51,6 @@ const getExecutablePath = async () => {
         }
     }
 
-    // List contents of /usr/bin to help debugging if nothing is found
-    try {
-        if (process.platform === 'linux') {
-            const binFiles = fs.readdirSync('/usr/bin').filter(f => f.includes('chrome') || f.includes('chromium'));
-            console.log('[Scraper] Chrome-related files in /usr/bin:', binFiles);
-        }
-    } catch (e) {
-        console.warn('[Scraper] Failed to list /usr/bin:', e.message);
-    }
-
     // Check common Windows paths for Chrome
     const paths = [
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
