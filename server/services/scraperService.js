@@ -28,9 +28,9 @@ const getExecutablePath = async () => {
     // 0. Use `which` command on Linux to find the binary automatically
     if (process.platform === 'linux') {
         try {
-            const path = execSync('which google-chrome-stable || which google-chrome || which chromium || which chromium-browser').toString().trim();
+            const path = execSync('which google-chrome-stable || which google-chrome || which chromium || which chromium-browser || find / -name "chrome" -type f -executable | head -n 1').toString().trim();
             if (path) {
-                console.log(`[Scraper] Found Chrome via 'which': ${path}`);
+                console.log(`[Scraper] Found Chrome via 'which/find': ${path}`);
                 return path;
             }
         } catch (e) {

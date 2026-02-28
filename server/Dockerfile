@@ -19,8 +19,10 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 # Install project dependencies
 RUN npm ci
 
-# Ensure the executable path is correct and accessible (debugging step)
-RUN ls -la /usr/bin/google-chrome-stable || echo "Chrome not found at /usr/bin/google-chrome-stable"
+# DEBUG: Find where Chrome actually is in this image
+RUN find / -name "chrome" 2>/dev/null || echo "Chrome binary not found via find"
+RUN which google-chrome-stable || echo "google-chrome-stable not in PATH"
+RUN which google-chrome || echo "google-chrome not in PATH"
 
 # Copy Prisma schema and generate client
 COPY prisma ./prisma
